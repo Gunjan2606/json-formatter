@@ -1,5 +1,15 @@
 // JSON formatting worker for large files
 
+// Polyfill Buffer for worker environment
+if (typeof Buffer === 'undefined') {
+  self.Buffer = function() {
+    return new Uint8Array();
+  };
+  self.Buffer.isBuffer = () => false;
+  self.Buffer.from = (data) => new Uint8Array();
+  self.Buffer.alloc = (size) => new Uint8Array(size);
+}
+
 // Recursively sort object keys
 function sortObjectKeys(obj) {
   if (Array.isArray(obj)) {

@@ -3,6 +3,16 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "../components/ui/button";
+
+// Polyfill Buffer for browser environment (Monaco Editor compatibility)
+if (typeof window !== 'undefined' && typeof (window as any).Buffer === 'undefined') {
+  (window as any).Buffer = function() {
+    return new Uint8Array();
+  };
+  (window as any).Buffer.isBuffer = () => false;
+  (window as any).Buffer.from = (data: any) => new Uint8Array();
+  (window as any).Buffer.alloc = (size: number) => new Uint8Array(size);
+}
 import {
   Copy,
   Download,
@@ -14,7 +24,6 @@ import {
   Settings,
   AlertCircle,
   Search,
-  X,
   ArrowUpDown,
   Upload,
 } from "lucide-react";
@@ -44,11 +53,11 @@ const Index = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [leftWidth, setLeftWidth] = useState(50); // percentage
   const [isDragging, setIsDragging] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [sortKeys, setSortKeys] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [largeOutputData, setLargeOutputData] = useState<string | null>(null); // Store large output separately
+  const [largeInputData, setLargeInputData] = useState<string | null>(null); // Store large input separately
+  const largeInputDataRef = useRef<string | null>(null); // Immediate access without state delay
   const inputEditorRef = useRef<any>(null);
   const outputEditorRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,13 +77,45 @@ const Index = () => {
     return obj;
   }, []);
 
-  const formatJSON = useCallback((minify: boolean = false) => {
-    const LARGE_FILE_THRESHOLD = 100000; // 100KB
+  const formatJSON = useCallback((minify: boolean = false, textOverride?: string) => {
+    // Use priority: textOverride > ref > largeInputData > input
+    const textToFormat = textOverride !== undefined ? textOverride : (largeInputDataRef.current || largeInputData || input);
+    const sizeMB = textToFormat.length / (1024 * 1024);
+    
+    console.log('=== formatJSON called ===');
+    console.log('Size:', sizeMB.toFixed(2) + 'MB');
+    console.log('Using override:', textOverride !== undefined);
+    console.log('Using ref:', !!largeInputDataRef.current);
+    console.log('Using largeInputData:', !!largeInputData);
+    console.log('First 100 chars:', textToFormat.substring(0, 100));
+    
+    // Check if trying to format the info message
+    if (textToFormat.includes('📁') || textToFormat.includes('File:') || textToFormat.includes('File too large') || textToFormat.includes('Processing with streaming')) {
+      console.error('❌ Attempted to format info message - data not ready yet');
+      setError({ message: 'Large file is still loading. Please wait...' });
+      setIsProcessing(false);
+      return;
+    }
+    
+    if (!textToFormat || textToFormat.trim().length === 0) {
+      console.error('❌ Empty input provided to formatJSON');
+      setError({ message: 'No JSON to format. Please paste or upload JSON data.' });
+      setIsProcessing(false);
+      return;
+    }
+    
     setError(null);
     setIsProcessing(true);
+    setUploadProgress(0);
     
-    // Use Web Worker for large files
-    if (input.length > LARGE_FILE_THRESHOLD && typeof Worker !== 'undefined') {
+    // Clear output immediately when starting to format
+    if (!textOverride) {
+      setOutput('');
+      setLargeOutputData(null);
+    }
+    
+    // Use simple worker for all files (Clarinet has CDN issues)
+    if (typeof Worker !== 'undefined') {
       try {
         const worker = new Worker('/json-worker.js');
         const startTime = performance.now();
@@ -94,24 +135,36 @@ const Index = () => {
           const { success, formatted, error: errorMsg, line, column } = event.data;
           const endTime = performance.now();
           
+          console.log('Worker response:', { success, hasFormatted: !!formatted, error: errorMsg });
+          
           if (success) {
-            setOutput(formatted);
-            setIsMinified(minify);
-            toast({
-              title: minify ? "JSON Minified" : "JSON Formatted",
-              description: `Successfully processed in ${(endTime - startTime).toFixed(0)}ms`,
-            });
+            const outputSizeMB = formatted.length / (1024 * 1024);
+            const MONACO_OUTPUT_LIMIT = 50; // Monaco crashes above ~50MB
+            
+            console.log('✅ Format successful, output size:', outputSizeMB.toFixed(2) + 'MB');
+            
+            if (outputSizeMB < MONACO_OUTPUT_LIMIT) {
+              // Safe to display in Monaco
+              setOutput(formatted);
+              setLargeOutputData(null); // Clear any previous large output
+              setIsMinified(minify);
+              setUploadProgress(0);
+            } else {
+              // Output too large - store separately and show message
+              console.log('⚠️  Output too large for editor ('+outputSizeMB.toFixed(1)+'MB), storing for download');
+              setLargeOutputData(formatted); // Store for download
+              setOutput(`✓ Formatting complete!\n\n📊 Output size: ${outputSizeMB.toFixed(1)} MB\n\n⚠️  Too large to display in editor (Monaco limit: ~50 MB)\n\n✅ Formatted JSON is ready for download\n\n👉 Click the Download button above to save your formatted file.\n\nNote: Attempting to display ${outputSizeMB.toFixed(0)}MB would crash your browser.`);
+              setIsMinified(minify);
+              setUploadProgress(0);
+            }
           } else {
+            console.error('Worker error:', errorMsg, 'Line:', line, 'Column:', column);
             setError({
               message: errorMsg,
               line,
               column,
             });
-            toast({
-              title: "Invalid JSON",
-              description: `Error at line ${line}, column ${column}`,
-              variant: "destructive",
-            });
+            setUploadProgress(0);
           }
           setIsProcessing(false);
           worker.terminate();
@@ -120,22 +173,17 @@ const Index = () => {
         worker.onerror = (error) => {
           clearTimeout(timeout);
           console.error('Worker error:', error);
-          toast({
-            title: "Processing Error",
-            description: "Failed to process JSON. Processing without worker.",
-            variant: "destructive",
-          });
           worker.terminate();
           
           // Fallback to direct processing
           try {
-            let parsed = JSON.parse(input);
+            let parsed = JSON.parse(textToFormat);
             if (sortKeys) {
               parsed = sortObjectKeys(parsed);
             }
-            const formatted = minify ? JSON.stringify(parsed) : JSON.stringify(parsed, null, 2);
-            setOutput(formatted);
-            setIsMinified(minify);
+      const formatted = minify ? JSON.stringify(parsed) : JSON.stringify(parsed, null, 2);
+      setOutput(formatted);
+      setIsMinified(minify);
           } catch (e: any) {
             setError({ message: e.message });
           }
@@ -144,99 +192,77 @@ const Index = () => {
         
         worker.postMessage({
           action: minify ? 'minify' : 'format',
-          data: input,
+          data: textToFormat,
           sortKeys: sortKeys
         });
       } catch (err) {
         console.error('Failed to create worker:', err);
         // Fallback to direct processing
         try {
-          let parsed = JSON.parse(input);
+          let parsed = JSON.parse(textToFormat);
           if (sortKeys) {
             parsed = sortObjectKeys(parsed);
           }
           const formatted = minify ? JSON.stringify(parsed) : JSON.stringify(parsed, null, 2);
           setOutput(formatted);
           setIsMinified(minify);
-          toast({
-            title: minify ? "JSON Minified" : "JSON Formatted",
-            description: sortKeys ? "Processed with sorted keys" : "Successfully processed your JSON",
-          });
-        } catch (e: any) {
-          const errorMatch = e.message.match(/position (\d+)/);
-          const position = errorMatch ? parseInt(errorMatch[1]) : 0;
-          const lines = input.substring(0, position).split('\n');
-          setError({
-            message: e.message,
+    } catch (e: any) {
+      const errorMatch = e.message.match(/position (\d+)/);
+      const position = errorMatch ? parseInt(errorMatch[1]) : 0;
+          const lines = textToFormat.substring(0, position).split('\n');
+      setError({
+        message: e.message,
             line: lines.length,
             column: lines[lines.length - 1].length + 1,
           });
         }
         setIsProcessing(false);
       }
-    } else {
-      // Process small files directly
+    }
+    // Fallback: Direct processing (no worker support)
+    else {
       try {
-        let parsed = JSON.parse(input);
+        let parsed = JSON.parse(textToFormat);
         if (sortKeys) {
           parsed = sortObjectKeys(parsed);
         }
         const formatted = minify ? JSON.stringify(parsed) : JSON.stringify(parsed, null, 2);
         setOutput(formatted);
         setIsMinified(minify);
-        
-        toast({
-          title: minify ? "JSON Minified" : "JSON Formatted",
-          description: sortKeys ? "Processed with sorted keys" : "Successfully processed your JSON",
-        });
       } catch (e: any) {
-      const errorMatch = e.message.match(/position (\d+)/);
-      const position = errorMatch ? parseInt(errorMatch[1]) : 0;
-      
-      // Calculate line and column from position
-      const lines = input.substring(0, position).split('\n');
-      const line = lines.length;
-      const column = lines[lines.length - 1].length + 1;
-      
-      setError({
-        message: e.message,
-        line,
-        column,
-      });
-      
-      toast({
-        title: "Invalid JSON",
-        description: `Error at line ${line}, column ${column}`,
-        variant: "destructive",
-      });
+        console.error('JSON processing error:', e);
+        const errorMatch = e.message.match(/position (\d+)/);
+        const position = errorMatch ? parseInt(errorMatch[1]) : 0;
+        const lines = textToFormat.substring(0, position).split('\n');
+        setError({
+          message: e.message || 'Invalid JSON format',
+          line: lines.length,
+          column: lines[lines.length - 1].length + 1,
+        });
       } finally {
         setIsProcessing(false);
       }
     }
-  }, [input, toast, sortKeys, sortObjectKeys]);
+  }, [input, largeInputData, toast, sortKeys, sortObjectKeys]);
 
   const copyToClipboard = useCallback(() => {
-    navigator.clipboard.writeText(output || input);
-    toast({
-      title: "Copied to clipboard",
-      description: "JSON copied successfully",
-    });
-  }, [output, input, toast]);
+    const textToCopy = largeOutputData || output || largeInputData || input;
+    navigator.clipboard.writeText(textToCopy);
+    // Copied - no toast needed
+  }, [output, input, largeOutputData, largeInputData]);
 
   const downloadJSON = useCallback(() => {
-    const blob = new Blob([output || input], { type: "application/json" });
+    // Use large output data if available, otherwise use output or input
+    const dataToDownload = largeOutputData || output || largeInputData || input;
+    const blob = new Blob([dataToDownload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "formatted.json";
+    a.download = largeOutputData ? "formatted-large.json" : "formatted.json";
     a.click();
     URL.revokeObjectURL(url);
-    
-    toast({
-      title: "Downloaded",
-      description: "JSON file saved successfully",
-    });
-  }, [output, input, toast]);
+    // Downloaded - no toast needed
+  }, [output, input, largeOutputData, largeInputData]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -254,147 +280,91 @@ const Index = () => {
     return count.toString();
   };
 
-  const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
-    if (!query) return;
-    
-    // Trigger find in both editors
+  const handleSearch = useCallback(() => {
+    // Open find widget in both editors directly
     if (inputEditorRef.current) {
-      const editor = inputEditorRef.current;
-      editor.trigger('search', 'actions.find', { searchString: query });
+      inputEditorRef.current.trigger('keyboard', 'actions.find');
     }
     if (outputEditorRef.current) {
-      const editor = outputEditorRef.current;
-      editor.trigger('search', 'actions.find', { searchString: query });
+      outputEditorRef.current.trigger('keyboard', 'actions.find');
     }
   }, []);
 
-  const clearSearch = useCallback(() => {
-    setSearchQuery("");
-    setShowSearch(false);
-    // Close find widget in both editors
-    if (inputEditorRef.current) {
-      inputEditorRef.current.trigger('search', 'closeFindWidget');
-    }
-    if (outputEditorRef.current) {
-      outputEditorRef.current.trigger('search', 'closeFindWidget');
-    }
-  }, []);
-
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (event: any) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const STREAMING_THRESHOLD = 10 * 1024 * 1024; // 10MB
+    const sizeMB = file.size / (1024 * 1024);
 
-    // For files larger than 10MB, use streaming
-    if (file.size > STREAMING_THRESHOLD && typeof Worker !== 'undefined') {
-      setIsStreaming(true);
-      setIsProcessing(true);
-      setUploadProgress(0);
-      setOutput('');
-      setError(null);
+    setIsProcessing(true);
+    setUploadProgress(10);
+    setError(null);
+    
+    // Clear previous output and data
+    setOutput('');
+    setLargeOutputData(null);
+    setLargeInputData(null);
+    largeInputDataRef.current = null;
 
-      try {
-        const worker = new Worker('/streaming-worker.js');
-        let outputChunks = '';
-
-        worker.onmessage = (e) => {
-          const { type, data, percent, message } = e.data;
-
-          if (type === 'progress') {
-            setUploadProgress(percent);
-          } else if (type === 'chunk') {
-            outputChunks += data;
-            setOutput(outputChunks);
-          } else if (type === 'done') {
-            setIsProcessing(false);
-            setIsStreaming(false);
-            setUploadProgress(100);
-            toast({
-              title: "File Processed",
-              description: `Successfully processed ${(file.size / 1024 / 1024).toFixed(1)}MB file`,
-            });
-            worker.terminate();
-          } else if (type === 'error') {
-            setError({ message });
-            setIsProcessing(false);
-            setIsStreaming(false);
-            toast({
-              title: "Processing Error",
-              description: message,
-              variant: "destructive",
-            });
-            worker.terminate();
-          }
-        };
-
-        worker.onerror = (error) => {
-          console.error('Streaming worker error:', error);
-          toast({
-            title: "Worker Error",
-            description: "Falling back to regular upload...",
-            variant: "destructive",
-          });
-          setIsStreaming(false);
-          setIsProcessing(false);
-          worker.terminate();
-        };
-
-        worker.postMessage({ 
-          action: 'format', 
-          file, 
-          sortKeys 
-        });
-      } catch (err) {
-        console.error('Failed to create streaming worker:', err);
-        toast({
-          title: "Streaming Failed",
-          description: "Loading file normally (may be slow for large files)...",
-          variant: "destructive",
-        });
-        setIsStreaming(false);
-        setIsProcessing(false);
-      }
-    } else {
-      // For smaller files, read normally
-      try {
-        const text = await file.text();
+    try {
+      console.log('Reading file:', file.name, 'Size:', sizeMB.toFixed(2) + 'MB');
+      setUploadProgress(30);
+      const text = await file.text();
+      console.log('File read successfully, length:', text.length);
+      setUploadProgress(50);
+      
+      const EDITOR_SAFE_LIMIT = 50; // Monaco can handle up to ~50MB
+      
+      if (sizeMB < EDITOR_SAFE_LIMIT) {
+        // Small files: Load into editor and format normally
         setInput(text);
-        toast({
-          title: "File Loaded",
-          description: `${file.name} loaded successfully`,
-        });
-      } catch (err: any) {
-        toast({
-          title: "File Error",
-          description: err.message,
-          variant: "destructive",
-        });
+        setLargeInputData(null); // Clear any previous large data
+        largeInputDataRef.current = null;
+        setUploadProgress(60);
+        
+        setTimeout(() => {
+          console.log('Starting auto-format...');
+          formatJSON(false, text);
+        }, 500);
+      } else {
+        // Large files: DON'T load into editor (will crash Monaco)
+        // Store the actual data and show info message
+        largeInputDataRef.current = text; // Store immediately in ref for instant access
+        setLargeInputData(text); // Also store in state for downloads
+        setInput(`📁 File: ${file.name}\n📊 Size: ${sizeMB.toFixed(1)} MB\n\n⚠️  File too large to display in editor (Monaco limit: ~50 MB)\n\n🔄 Processing with streaming parser...\n\nFormatted output will:\n  • Stream progressively to output panel (if < 50 MB)\n  • Be available for download (if ≥ 50 MB)\n\nProcessing may take 10-60 seconds for large files...\nPlease wait...`);
+        setUploadProgress(60);
+        
+        // Format in worker - pass text directly to avoid state timing issues
+        setTimeout(() => {
+          console.log('Processing large file with streaming parser...');
+          formatJSON(false, text); // Pass text directly for auto-format
+        }, 300);
       }
+      
+    } catch (err: any) {
+      console.error('File read error:', err);
+      setError({ message: 'File read error: ' + err.message });
+      setUploadProgress(0);
+      setIsProcessing(false);
     }
 
     // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [toast, sortKeys]);
+  }, [formatJSON]);
 
-  // Handle Escape key to close search
+  // Handle Ctrl/Cmd + F to open search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && showSearch) {
-        clearSearch();
-      }
-      // Ctrl/Cmd + F to open search
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
-        setShowSearch(true);
+        handleSearch();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [showSearch, clearSearch]);
+  }, [handleSearch]);
 
   const handleMouseDown = useCallback(() => {
     setIsDragging(true);
@@ -477,7 +447,6 @@ const Index = () => {
                 variant="ghost"
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
-                title="Upload JSON file (supports up to 1GB+)"
                 className={isFullscreen ? 'h-7 w-7' : ''}
               >
                 <Upload className={`${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} />
@@ -485,9 +454,9 @@ const Index = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setShowSearch(!showSearch)}
-                title="Search in JSON"
+                onClick={handleSearch}
                 className={isFullscreen ? 'h-7 w-7' : ''}
+                title="Search (Cmd/Ctrl+F)"
               >
                 <Search className={`${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} />
               </Button>
@@ -496,7 +465,6 @@ const Index = () => {
                 variant="ghost"
                 size="icon"
                 onClick={toggleFullscreen}
-                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
                 className={isFullscreen ? 'h-7 w-7' : ''}
               >
                 {isFullscreen ? <Minimize2 className={`${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} /> : <Maximize2 className="w-4 h-4" />}
@@ -506,51 +474,15 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Search Bar */}
-      {showSearch && (
-        <div className="border-b border-border bg-card/50 backdrop-blur-sm">
-          <div className={`container mx-auto px-4 transition-all duration-300 ${
-            isFullscreen ? 'py-1.5' : 'py-3'
-          }`}>
-            <div className="flex items-center gap-2 max-w-2xl">
-              <Search className={`text-muted-foreground ${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} />
-              <input
-                type="text"
-                placeholder="Search keys or values..."
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                className={`flex-1 bg-background border border-border rounded px-3 focus:outline-none focus:ring-2 focus:ring-primary ${
-                  isFullscreen ? 'py-1 text-xs' : 'py-1.5 text-sm'
-                }`}
-                autoFocus
-              />
-              {searchQuery && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearSearch}
-                  className={isFullscreen ? 'h-6' : 'h-7'}
-                >
-                  <X className={isFullscreen ? 'w-3 h-3' : 'w-4 h-4'} />
-                </Button>
-              )}
-              {!isFullscreen && (
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  Press Esc to close
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Progress Bar for Streaming */}
-      {isStreaming && uploadProgress > 0 && (
+      {/* Upload/Processing Progress */}
+      {uploadProgress > 0 && uploadProgress < 100 && (
         <div className="bg-card border-b border-border">
           <div className="container mx-auto px-4 py-2">
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground whitespace-nowrap">
-                Processing: {uploadProgress}%
+                {uploadProgress < 30 ? 'Reading file' : 
+                 uploadProgress < 60 ? 'Processing' : 
+                 uploadProgress < 90 ? 'Formatting' : 'Finalizing'}: {uploadProgress}%
               </span>
               <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
                 <div 
@@ -558,9 +490,11 @@ const Index = () => {
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
-              <span className="text-xs text-primary font-medium">
-                🚀 Streaming mode active
-              </span>
+              {uploadProgress > 30 && (
+                <span className="text-xs text-primary font-medium">
+                  🚀 Processing in background
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -584,14 +518,11 @@ const Index = () => {
             <div className="flex items-center gap-2">
               {!isFullscreen && <Code className="w-4 h-4" />}
               <span className={`font-medium flex items-center gap-2 ${isFullscreen ? 'text-xs' : 'text-sm'}`}>
-                Input
-              </span>
-              <span 
-                className="text-xs text-muted-foreground cursor-help" 
-                title={`${input.length.toLocaleString()} characters`}
-              >
-                {formatCount(input.length)} chars
-              </span>
+              Input
+            </span>
+            <span className="text-xs text-muted-foreground">
+                {formatCount(input.length)}
+            </span>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -601,7 +532,6 @@ const Index = () => {
                 className={`text-xs transition-all duration-200 ${isFullscreen ? 'h-6 px-2' : 'h-7'} ${
                   sortKeys ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
                 }`}
-                title={sortKeys ? "Sorting enabled - keys will be alphabetically ordered" : "Click to enable key sorting"}
               >
                 <ArrowUpDown className="w-3 h-3 mr-1" />
                 {!isFullscreen && "Sort"}
@@ -679,7 +609,7 @@ const Index = () => {
             <div className="flex items-center gap-2">
               {!isFullscreen && <FileJson className="w-4 h-4" />}
               <span className={`font-medium flex items-center gap-2 ${isFullscreen ? 'text-xs' : 'text-sm'}`}>
-                Output
+              Output
               </span>
               {output && (
                 <span className={`text-xs px-2 py-0.5 rounded ${
@@ -690,12 +620,9 @@ const Index = () => {
                   {isMinified ? 'Minified' : 'Formatted'}
                 </span>
               )}
-              <span 
-                className="text-xs text-muted-foreground cursor-help" 
-                title={`${output.length.toLocaleString()} characters`}
-              >
-                {formatCount(output.length)} chars
-              </span>
+            <span className="text-xs text-muted-foreground">
+                {formatCount(output.length)}
+            </span>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -752,24 +679,19 @@ const Index = () => {
       {!isFullscreen && (
         <footer className="border-t border-border bg-card py-2 px-4">
           <div className="container mx-auto flex items-center justify-between text-xs text-muted-foreground">
-            <div className="flex items-center gap-3">
-              <span>Built with ⚡ for speed</span>
-              {input.length > 100000 && (
-                <>
-                  <span className="hidden md:inline">•</span>
-                  <span className="hidden md:inline">🚀 Web Worker enabled</span>
-                </>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {isProcessing ? (
-                <span className="text-primary">Processing...</span>
-              ) : (
-                <span className="hidden md:inline">Press Ctrl+F to search</span>
-              )}
-            </div>
+            <div className="flex items-center gap-2 text-xs">
+              {(() => {
+                const sizeMB = input.length / (1024 * 1024);
+                if (sizeMB > 50) return <span className="text-primary">🌊 Streaming ({formatCount(input.length)})</span>;
+                if (input.length > 100000) return <span className="text-primary">🚀 Worker ({formatCount(input.length)})</span>;
+                return null;
+              })()}
           </div>
-        </footer>
+          <div className="flex items-center gap-2">
+              {isProcessing && <span className="text-primary">Processing...</span>}
+          </div>
+        </div>
+      </footer>
       )}
     </div>
   );

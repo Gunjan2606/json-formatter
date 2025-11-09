@@ -1,4 +1,15 @@
 // Streaming JSON Worker - handles files up to 1GB+ without memory issues
+
+// Polyfill Buffer for worker environment
+if (typeof Buffer === 'undefined') {
+  self.Buffer = function() {
+    return new Uint8Array();
+  };
+  self.Buffer.isBuffer = () => false;
+  self.Buffer.from = (data) => new Uint8Array();
+  self.Buffer.alloc = (size) => new Uint8Array(size);
+}
+
 importScripts("https://unpkg.com/clarinet@0.12.4/clarinet.js");
 
 self.onmessage = async (event) => {
