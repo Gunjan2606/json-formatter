@@ -47,6 +47,7 @@ const Index = () => {
   const [input, setInput] = useState('{\n  "name": "JSON Formatter",\n  "version": "1.0.0",\n  "features": ["Fast", "Beautiful", "Powerful"]\n}');
   const [output, setOutput] = useState("");
   const [isMinified, setIsMinified] = useState(false);
+  const [activeMode, setActiveMode] = useState<'format' | 'minify'>('format'); // Format is default
   const [error, setError] = useState<{ message: string; line?: number; column?: number } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [editorTheme, setEditorTheme] = useState<"vs-dark" | "light">("vs-dark");
@@ -139,7 +140,7 @@ const Index = () => {
           
           if (success) {
             const outputSizeMB = formatted.length / (1024 * 1024);
-            const MONACO_OUTPUT_LIMIT = 50; // Monaco crashes above ~50MB
+            const MONACO_OUTPUT_LIMIT = 30; // Monaco crashes above ~30MB
             
             console.log('✅ Format successful, output size:', outputSizeMB.toFixed(2) + 'MB');
             
@@ -149,13 +150,15 @@ const Index = () => {
               setLargeOutputData(null); // Clear any previous large output
               setIsMinified(minify);
               setUploadProgress(0);
+              setError(null); // Clear any previous errors
             } else {
               // Output too large - store separately and show message
               console.log('⚠️  Output too large for editor ('+outputSizeMB.toFixed(1)+'MB), storing for download');
               setLargeOutputData(formatted); // Store for download
-              setOutput(`✓ Formatting complete!\n\n📊 Output size: ${outputSizeMB.toFixed(1)} MB\n\n⚠️  Too large to display in editor (Monaco limit: ~50 MB)\n\n✅ Formatted JSON is ready for download\n\n👉 Click the Download button above to save your formatted file.\n\nNote: Attempting to display ${outputSizeMB.toFixed(0)}MB would crash your browser.`);
+              setOutput(`✓ Formatting complete!\n\n📊 Output size: ${outputSizeMB.toFixed(1)} MB\n\n⚠️  Too large to display in editor (Monaco limit: ~30 MB)\n\n✅ Formatted JSON is ready for download\n\n👉 Click the Download button above to save your formatted file.\n\nNote: Attempting to display ${outputSizeMB.toFixed(0)}MB would crash your browser.`);
               setIsMinified(minify);
               setUploadProgress(0);
+              setError(null); // Clear any previous errors
             }
           } else {
             console.error('Worker error:', errorMsg, 'Line:', line, 'Column:', column);
@@ -313,7 +316,7 @@ const Index = () => {
       console.log('File read successfully, length:', text.length);
       setUploadProgress(50);
       
-      const EDITOR_SAFE_LIMIT = 50; // Monaco can handle up to ~50MB
+      const EDITOR_SAFE_LIMIT = 30; // Monaco can handle up to ~30MB
       
       if (sizeMB < EDITOR_SAFE_LIMIT) {
         // Small files: Load into editor and format normally
@@ -323,21 +326,21 @@ const Index = () => {
         setUploadProgress(60);
         
         setTimeout(() => {
-          console.log('Starting auto-format...');
-          formatJSON(false, text);
+          console.log('Starting auto-format in', activeMode, 'mode');
+          formatJSON(activeMode === 'minify', text);
         }, 500);
       } else {
         // Large files: DON'T load into editor (will crash Monaco)
         // Store the actual data and show info message
         largeInputDataRef.current = text; // Store immediately in ref for instant access
         setLargeInputData(text); // Also store in state for downloads
-        setInput(`📁 File: ${file.name}\n📊 Size: ${sizeMB.toFixed(1)} MB\n\n⚠️  File too large to display in editor (Monaco limit: ~50 MB)\n\n🔄 Processing with streaming parser...\n\nFormatted output will:\n  • Stream progressively to output panel (if < 50 MB)\n  • Be available for download (if ≥ 50 MB)\n\nProcessing may take 10-60 seconds for large files...\nPlease wait...`);
+        setInput(`📁 File: ${file.name}\n📊 Size: ${sizeMB.toFixed(1)} MB\n\n⚠️  File too large to display in editor (Monaco limit: ~30 MB)\n\n🔄 Processing with streaming parser...\n\nFormatted output will:\n  • Stream progressively to output panel (if < 30 MB)\n  • Be available for download (if ≥ 30 MB)\n\nProcessing may take 10-60 seconds for large files...\nPlease wait...`);
         setUploadProgress(60);
         
         // Format in worker - pass text directly to avoid state timing issues
         setTimeout(() => {
-          console.log('Processing large file with streaming parser...');
-          formatJSON(false, text); // Pass text directly for auto-format
+          console.log('Processing large file in', activeMode, 'mode');
+          formatJSON(activeMode === 'minify', text); // Pass text directly for auto-format
         }, 300);
       }
       
@@ -352,7 +355,7 @@ const Index = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [formatJSON]);
+  }, [formatJSON, activeMode]);
 
   // Handle Ctrl/Cmd + F to open search
   useEffect(() => {
@@ -414,23 +417,23 @@ const Index = () => {
         isFullscreen ? 'py-1' : ''
       }`}>
         <div className={`container mx-auto px-4 transition-all duration-300 ${
-          isFullscreen ? 'py-1' : 'py-4'
+          isFullscreen ? 'py-1' : 'py-2.5'
         }`}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {!isFullscreen && (
-              <div className="p-2 rounded-lg bg-gradient-to-br from-primary to-accent">
-                <FileJson className="w-6 h-6 text-primary-foreground" />
+              <div className="p-1.5 rounded-lg bg-gradient-to-br from-primary to-accent">
+                <FileJson className="w-4 h-4 text-primary-foreground" />
               </div>
               )}
               <div>
                 <h1 className={`font-bold text-foreground transition-all duration-300 ${
-                  isFullscreen ? 'text-sm' : 'text-2xl'
+                  isFullscreen ? 'text-sm' : 'text-lg'
                 }`}>
                   JSON Formatter
                 </h1>
                 {!isFullscreen && (
-                <p className="text-sm text-muted-foreground">Fast, beautiful, and powerful</p>
+                <p className="text-xs text-muted-foreground">Fast, beautiful, and powerful</p>
                 )}
               </div>
             </div>
@@ -443,14 +446,6 @@ const Index = () => {
                 onChange={handleFileUpload}
                 className="hidden"
               />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => fileInputRef.current?.click()}
-                className={isFullscreen ? 'h-7 w-7' : ''}
-              >
-                <Upload className={`${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} />
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -520,6 +515,15 @@ const Index = () => {
               <span className={`font-medium flex items-center gap-2 ${isFullscreen ? 'text-xs' : 'text-sm'}`}>
               Input
             </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              className={`${isFullscreen ? 'h-5 w-5' : 'h-6 w-6'}`}
+              title="Upload JSON file"
+            >
+              <Upload className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+            </Button>
             <span className="text-xs text-muted-foreground">
                 {formatCount(input.length)}
             </span>
@@ -538,20 +542,30 @@ const Index = () => {
               </Button>
               <div className="w-px h-4 bg-border" />
               <Button
-                onClick={() => formatJSON(false)}
+                onClick={() => {
+                  setActiveMode('format');
+                  formatJSON(false);
+                }}
                 size="sm"
-                variant="default"
-                className={`text-xs transition-all duration-200 hover:bg-primary/90 active:scale-95 ${isFullscreen ? 'h-6 px-2' : 'h-7'}`}
+                variant={activeMode === 'format' ? "default" : "ghost"}
+                className={`text-xs transition-all duration-200 active:scale-95 ${isFullscreen ? 'h-6 px-2' : 'h-7'} ${
+                  activeMode === 'format' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
+                }`}
                 disabled={isProcessing}
               >
                 <Code className="w-3 h-3 mr-1" />
                 Format
               </Button>
               <Button
-                onClick={() => formatJSON(true)}
+                onClick={() => {
+                  setActiveMode('minify');
+                  formatJSON(true);
+                }}
                 size="sm"
-                variant="default"
-                className={`text-xs transition-all duration-200 hover:bg-primary/90 active:scale-95 ${isFullscreen ? 'h-6 px-2' : 'h-7'}`}
+                variant={activeMode === 'minify' ? "default" : "ghost"}
+                className={`text-xs transition-all duration-200 active:scale-95 ${isFullscreen ? 'h-6 px-2' : 'h-7'} ${
+                  activeMode === 'minify' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
+                }`}
                 disabled={isProcessing}
               >
                 <Minimize2 className="w-3 h-3 mr-1" />
@@ -564,7 +578,16 @@ const Index = () => {
               height="100%"
               defaultLanguage="json"
               value={input}
-              onChange={(value) => setInput(value || "")}
+              onChange={(value) => {
+                setInput(value || "");
+                // Move cursor and scroll to start after paste
+                if (inputEditorRef.current && value && value.length > input.length + 100) {
+                  requestAnimationFrame(() => {
+                    inputEditorRef.current?.setPosition({ lineNumber: 1, column: 1 });
+                    inputEditorRef.current?.revealLineInCenter(1);
+                  });
+                }
+              }}
               theme={editorTheme}
               onMount={(editor) => {
                 inputEditorRef.current = editor;
@@ -627,23 +650,23 @@ const Index = () => {
             <div className="flex items-center gap-2">
               <Button
                 onClick={copyToClipboard}
-                size="sm"
+                size="icon"
                 variant="ghost"
-                className={`text-xs transition-all duration-200 hover:bg-secondary active:scale-95 ${isFullscreen ? 'h-6 px-2' : 'h-7'}`}
+                className={`transition-all duration-200 hover:bg-secondary active:scale-95 ${isFullscreen ? 'h-6 w-6' : 'h-7 w-7'}`}
                 disabled={!output}
+                title="Copy to clipboard"
               >
-                <Copy className="w-3 h-3 mr-1" />
-                Copy
+                <Copy className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
               </Button>
               <Button
                 onClick={downloadJSON}
-                size="sm"
+                size="icon"
                 variant="ghost"
-                className={`text-xs transition-all duration-200 hover:bg-secondary active:scale-95 ${isFullscreen ? 'h-6 px-2' : 'h-7'}`}
+                className={`transition-all duration-200 hover:bg-secondary active:scale-95 ${isFullscreen ? 'h-6 w-6' : 'h-7 w-7'}`}
                 disabled={!output}
+                title="Download JSON"
               >
-                <Download className="w-3 h-3 mr-1" />
-                Download
+                <Download className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
               </Button>
             </div>
           </div>
@@ -682,7 +705,7 @@ const Index = () => {
             <div className="flex items-center gap-2 text-xs">
               {(() => {
                 const sizeMB = input.length / (1024 * 1024);
-                if (sizeMB > 50) return <span className="text-primary">🌊 Streaming ({formatCount(input.length)})</span>;
+                if (sizeMB > 30) return <span className="text-primary">🌊 Large File ({formatCount(input.length)})</span>;
                 if (input.length > 100000) return <span className="text-primary">🚀 Worker ({formatCount(input.length)})</span>;
                 return null;
               })()}
