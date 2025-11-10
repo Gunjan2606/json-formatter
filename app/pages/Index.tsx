@@ -26,10 +26,17 @@ import {
   Search,
   ArrowUpDown,
   Upload,
+  Save,
+  History,
+  BrushCleaning,
 } from "lucide-react";
 import { useToast } from "../hooks/use-toast";
 import { ErrorDisplay } from "../components/formatter/ErrorDisplay";
 import { ThemeSelector } from "../components/formatter/ThemeSelector";
+import { RecentOutputs } from "../components/formatter/RecentOutputs";
+import { saveOutput, getAllOutputs } from "../lib/storage";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
+import { FileUpload } from "../components/ui/file-upload";
 
 const Editor = dynamic(
   () => import("@monaco-editor/react").then((mod) => mod.default),
@@ -60,9 +67,17 @@ const Index = () => {
   const [largeInputData, setLargeInputData] = useState<string | null>(null); // Store large input separately
   const largeInputDataRef = useRef<string | null>(null); // Immediate access without state delay
   const inputEditorRef = useRef<any>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const outputEditorRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [refreshSidebar, setRefreshSidebar] = useState(0);
+  const [savedOutputsCount, setSavedOutputsCount] = useState(0);
+  const [showLargeFileModal, setShowLargeFileModal] = useState(false);
+  const [largeFileSize, setLargeFileSize] = useState(0);
+  const [showLargePasteWarning, setShowLargePasteWarning] = useState(false);
+  const [attemptedPasteSize, setAttemptedPasteSize] = useState(0);
 
   const sortObjectKeys = useCallback((obj: any): any => {
     if (Array.isArray(obj)) {
@@ -90,17 +105,12 @@ const Index = () => {
     console.log('Using largeInputData:', !!largeInputData);
     console.log('First 100 chars:', textToFormat.substring(0, 100));
     
-    // Check if trying to format the info message
-    if (textToFormat.includes('📁') || textToFormat.includes('File:') || textToFormat.includes('File too large') || textToFormat.includes('Processing with streaming')) {
-      console.error('❌ Attempted to format info message - data not ready yet');
-      setError({ message: 'Large file is still loading. Please wait...' });
-      setIsProcessing(false);
-      return;
-    }
-    
     if (!textToFormat || textToFormat.trim().length === 0) {
-      console.error('❌ Empty input provided to formatJSON');
-      setError({ message: 'No JSON to format. Please paste or upload JSON data.' });
+      toast({
+        title: "No Input",
+        description: "Please paste or upload JSON data to format.",
+        variant: "destructive",
+      });
       setIsProcessing(false);
       return;
     }
@@ -152,13 +162,15 @@ const Index = () => {
               setUploadProgress(0);
               setError(null); // Clear any previous errors
             } else {
-              // Output too large - store separately and show message
+              // Output too large - store separately and show modal
               console.log('⚠️  Output too large for editor ('+outputSizeMB.toFixed(1)+'MB), storing for download');
               setLargeOutputData(formatted); // Store for download
-              setOutput(`✓ Formatting complete!\n\n📊 Output size: ${outputSizeMB.toFixed(1)} MB\n\n⚠️  Too large to display in editor (Monaco limit: ~30 MB)\n\n✅ Formatted JSON is ready for download\n\n👉 Click the Download button above to save your formatted file.\n\nNote: Attempting to display ${outputSizeMB.toFixed(0)}MB would crash your browser.`);
+              setLargeFileSize(outputSizeMB);
+              setOutput(''); // Keep output editor empty
               setIsMinified(minify);
               setUploadProgress(0);
               setError(null); // Clear any previous errors
+              setShowLargeFileModal(true); // Show download modal
             }
           } else {
             console.error('Worker error:', errorMsg, 'Line:', line, 'Column:', column);
@@ -264,8 +276,62 @@ const Index = () => {
     a.download = largeOutputData ? "formatted-large.json" : "formatted.json";
     a.click();
     URL.revokeObjectURL(url);
+    // Close modal if open
+    if (showLargeFileModal) {
+      setShowLargeFileModal(false);
+    }
     // Downloaded - no toast needed
-  }, [output, input, largeOutputData, largeInputData]);
+  }, [output, input, largeOutputData, largeInputData, showLargeFileModal]);
+
+  const saveToLocalStorage = useCallback(async () => {
+    const dataToSave = largeOutputData || output;
+    
+    if (!dataToSave || dataToSave.trim().length === 0) {
+      toast({
+        title: "Nothing to save",
+        description: "Please format JSON first before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const sizeMB = dataToSave.length / (1024 * 1024);
+      const name = `Formatted ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+      
+      await saveOutput(dataToSave, name);
+      
+      toast({
+        title: "Saved!",
+        description: `Output saved (${sizeMB.toFixed(1)} MB)`,
+      });
+      
+      // Refresh the sidebar to show the new output
+      setRefreshSidebar(prev => prev + 1);
+    } catch (error: any) {
+      toast({
+        title: "Save failed",
+        description: error.message || "Could not save output",
+        variant: "destructive",
+      });
+    }
+  }, [output, largeOutputData, toast]);
+
+  const handleRestoreFromSidebar = useCallback((content: string) => {
+    setInput(content);
+    setIsSidebarOpen(false);
+    toast({
+      title: "Restored!",
+      description: "Output restored to input editor",
+    });
+  }, [toast]);
+
+  const clearOutput = useCallback(() => {
+    setOutput('');
+    setLargeOutputData(null);
+    setError(null);
+    setIsMinified(false);
+  }, []);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -282,6 +348,57 @@ const Index = () => {
     if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
     return count.toString();
   };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const handleEditorPaste = useCallback((editor: any) => {
+    // Add paste event listener to prevent large pastes
+    const editorDomNode = editor.getDomNode();
+    if (!editorDomNode) {
+      console.warn('Editor DOM node not found');
+      return;
+    }
+
+    const textArea = editorDomNode.querySelector('textarea');
+    if (!textArea) {
+      console.warn('Editor textarea not found');
+      return;
+    }
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const pastedText = e.clipboardData?.getData('text');
+      if (!pastedText) return;
+
+      const pasteSizeBytes = new Blob([pastedText]).size;
+      const pasteSizeMB = pasteSizeBytes / (1024 * 1024);
+      const PASTE_LIMIT_MB = 30; // Same as Monaco editor limit
+
+      console.log('Paste detected:', pasteSizeMB.toFixed(2) + 'MB');
+
+      if (pasteSizeMB > PASTE_LIMIT_MB) {
+        console.log('⚠️  Paste blocked - too large');
+        e.preventDefault(); // Stop the paste
+        e.stopPropagation();
+        
+        setAttemptedPasteSize(pasteSizeMB);
+        setShowLargePasteWarning(true);
+        
+        return false;
+      }
+    };
+
+    console.log('Paste listener attached to editor');
+    textArea.addEventListener('paste', handlePaste, true); // Use capture phase
+    
+    // Cleanup
+    return () => {
+      textArea.removeEventListener('paste', handlePaste, true);
+    };
+  }, []);
 
   const handleSearch = useCallback(() => {
     // Open find widget in both editors directly
@@ -331,15 +448,26 @@ const Index = () => {
         }, 500);
       } else {
         // Large files: DON'T load into editor (will crash Monaco)
-        // Store the actual data and show info message
+        // Store the actual data and keep editor empty
+        console.log('⚠️  File too large for editor ('+sizeMB.toFixed(1)+'MB), processing without display');
         largeInputDataRef.current = text; // Store immediately in ref for instant access
         setLargeInputData(text); // Also store in state for downloads
-        setInput(`📁 File: ${file.name}\n📊 Size: ${sizeMB.toFixed(1)} MB\n\n⚠️  File too large to display in editor (Monaco limit: ~30 MB)\n\n🔄 Processing with streaming parser...\n\nFormatted output will:\n  • Stream progressively to output panel (if < 30 MB)\n  • Be available for download (if ≥ 30 MB)\n\nProcessing may take 10-60 seconds for large files...\nPlease wait...`);
+        
+        // Clear input FIRST before any processing
+        setInput('');
+        
+        // Clear the editor content directly
+        if (inputEditorRef.current) {
+          inputEditorRef.current.setValue('');
+        }
+        
         setUploadProgress(60);
+        setIsProcessing(false); // Stop processing indicator
         
         // Format in worker - pass text directly to avoid state timing issues
         setTimeout(() => {
           console.log('Processing large file in', activeMode, 'mode');
+          setIsProcessing(true);
           formatJSON(activeMode === 'minify', text); // Pass text directly for auto-format
         }, 300);
       }
@@ -357,6 +485,76 @@ const Index = () => {
     }
   }, [formatJSON, activeMode]);
 
+  // Handle file selection from FileUpload component
+  const handleFileSelect = useCallback(async (file: File) => {
+    if (!file) return;
+
+    const sizeMB = file.size / (1024 * 1024);
+
+    setIsProcessing(true);
+    setUploadProgress(10);
+    setError(null);
+    
+    // Clear previous output and data
+    setOutput('');
+    setLargeOutputData(null);
+    setLargeInputData(null);
+    largeInputDataRef.current = null;
+
+    try {
+      console.log('Reading file:', file.name, 'Size:', sizeMB.toFixed(2) + 'MB');
+      setUploadProgress(30);
+      const text = await file.text();
+      console.log('File read successfully, length:', text.length);
+      setUploadProgress(50);
+      
+      const EDITOR_SAFE_LIMIT = 30; // Monaco can handle up to ~30MB
+      
+      if (sizeMB < EDITOR_SAFE_LIMIT) {
+        // Small files: Load into editor and format normally
+        setInput(text);
+        setLargeInputData(null); // Clear any previous large data
+        largeInputDataRef.current = null;
+        setUploadProgress(60);
+        
+        setTimeout(() => {
+          console.log('Starting auto-format in', activeMode, 'mode');
+          formatJSON(activeMode === 'minify', text);
+        }, 500);
+      } else {
+        // Large files: DON'T load into editor (will crash Monaco)
+        // Store the actual data and keep editor empty
+        console.log('⚠️  File too large for editor ('+sizeMB.toFixed(1)+'MB), processing without display');
+        largeInputDataRef.current = text; // Store immediately in ref for instant access
+        setLargeInputData(text); // Also store in state for downloads
+        
+        // Clear input FIRST before any processing
+        setInput('');
+        
+        // Clear the editor content directly
+        if (inputEditorRef.current) {
+          inputEditorRef.current.setValue('');
+        }
+        
+        setUploadProgress(60);
+        setIsProcessing(false); // Stop processing indicator
+        
+        // Format in worker - pass text directly to avoid state timing issues
+        setTimeout(() => {
+          console.log('Processing large file in', activeMode, 'mode');
+          setIsProcessing(true);
+          formatJSON(activeMode === 'minify', text); // Pass text directly for auto-format
+        }, 300);
+      }
+      
+    } catch (err: any) {
+      console.error('File read error:', err);
+      setError({ message: 'File read error: ' + err.message });
+      setUploadProgress(0);
+      setIsProcessing(false);
+    }
+  }, [formatJSON, activeMode]);
+
   // Handle Ctrl/Cmd + F to open search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -368,6 +566,23 @@ const Index = () => {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleSearch]);
+
+  // Load saved outputs count
+  useEffect(() => {
+    const loadOutputsCount = async () => {
+      const outputs = await getAllOutputs();
+      setSavedOutputsCount(outputs.length);
+    };
+    loadOutputsCount();
+  }, [refreshSidebar, isSidebarOpen]);
+
+  // Debug: Log when modal state changes
+  useEffect(() => {
+    if (showLargePasteWarning) {
+      console.log('🎨 Large Paste Warning Modal should now be visible!');
+      console.log('attemptedPasteSize:', attemptedPasteSize);
+    }
+  }, [showLargePasteWarning, attemptedPasteSize]);
 
   const handleMouseDown = useCallback(() => {
     setIsDragging(true);
@@ -410,6 +625,18 @@ const Index = () => {
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* Header */}
@@ -433,7 +660,7 @@ const Index = () => {
                   JSON Formatter
                 </h1>
                 {!isFullscreen && (
-                <p className="text-xs text-muted-foreground">Fast, beautiful, and powerful</p>
+                <p className="text-xs text-muted-foreground">Fast, accurate, and reliable</p>
                 )}
               </div>
             </div>
@@ -463,6 +690,19 @@ const Index = () => {
                 className={isFullscreen ? 'h-7 w-7' : ''}
               >
                 {isFullscreen ? <Minimize2 className={`${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} /> : <Maximize2 className="w-4 h-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className={`${isFullscreen ? 'h-7' : 'h-8'} flex items-center gap-2 px-3`}
+                title="Recent Outputs"
+              >
+                <History className={`${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} />
+                {!isFullscreen && (
+                  <span className="text-sm font-medium">
+                    History {savedOutputsCount > 0 && `(${savedOutputsCount})`}
+                  </span>
+                )}
               </Button>
             </div>
           </div>
@@ -499,34 +739,42 @@ const Index = () => {
       {error && <ErrorDisplay error={error} />}
 
       {/* Editors */}
-      <div id="editor-container" className={`flex-1 flex flex-col md:flex-row overflow-hidden transition-all duration-300 ${
+      <div id="editor-container" className={`flex-1 flex flex-col md:flex-row gap-4 md:gap-0 overflow-hidden transition-all duration-300 ${
         isFullscreen ? 'p-2' : 'p-4'
       }`}>
         {/* Input Editor */}
         <div 
           className="flex flex-col min-h-[400px] rounded-lg overflow-hidden border border-border bg-card"
-          style={{ width: `${leftWidth}%` }}
+          style={{ width: isMobile ? '100%' : `${leftWidth}%` }}
         >
           <div className={`px-4 border-b border-border flex items-center justify-between bg-secondary/50 transition-all duration-300 ${
             isFullscreen ? 'py-1' : 'py-2'
           }`}>
             <div className="flex items-center gap-2">
               {!isFullscreen && <Code className="w-4 h-4" />}
-              <span className={`font-medium flex items-center gap-2 ${isFullscreen ? 'text-xs' : 'text-sm'}`}>
-              Input
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              className={`${isFullscreen ? 'h-5 w-5' : 'h-6 w-6'}`}
-              title="Upload JSON file"
-            >
-              <Upload className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
-            </Button>
-            <span className="text-xs text-muted-foreground">
-                {formatCount(input.length)}
-            </span>
+              <span className={`font-medium ${isFullscreen ? 'text-xs' : 'text-sm'}`}>
+                Input
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                className={`${isFullscreen ? 'h-5 w-5' : 'h-6 w-6'}`}
+                title="Upload JSON file"
+              >
+                <Upload className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {formatFileSize(input.length)}
+              </span>
+              {/* Hidden file input for upload button */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -573,12 +821,45 @@ const Index = () => {
               </Button>
             </div>
           </div>
-          <div className="flex-1">
+          <div className="flex-1 relative">
+            {/* Show drag-and-drop when editor is empty */}
+            {!input && !isProcessing && (
+              <div className="absolute inset-0 flex items-center justify-center p-8 z-10">
+                <FileUpload
+                  onFileSelect={handleFileSelect}
+                  accept=".json"
+                  disabled={isProcessing}
+                  className="max-w-md w-full"
+                />
+              </div>
+            )}
             <Editor
               height="100%"
               defaultLanguage="json"
               value={input}
               onChange={(value) => {
+                // Prevent large content from being loaded
+                const sizeMB = (value?.length || 0) / (1024 * 1024);
+                if (sizeMB > 30) {
+                  console.warn('⚠️  Prevented large content from loading:', sizeMB.toFixed(2) + 'MB');
+                  console.log('🚨 Setting modal state to show warning...');
+                  
+                  // Show warning modal FIRST
+                  setAttemptedPasteSize(sizeMB);
+                  setShowLargePasteWarning(true);
+                  
+                  console.log('Modal state set. attemptedPasteSize:', sizeMB, 'showLargePasteWarning:', true);
+                  
+                  // Clear the editor after a tiny delay to ensure modal shows
+                  setTimeout(() => {
+                    if (inputEditorRef.current) {
+                      inputEditorRef.current.setValue('');
+                    }
+                  }, 100);
+                  
+                  return;
+                }
+                
                 setInput(value || "");
                 // Move cursor and scroll to start after paste
                 if (inputEditorRef.current && value && value.length > input.length + 100) {
@@ -591,6 +872,7 @@ const Index = () => {
               theme={editorTheme}
               onMount={(editor) => {
                 inputEditorRef.current = editor;
+                handleEditorPaste(editor);
               }}
               options={{
                 minimap: { enabled: false },
@@ -624,7 +906,7 @@ const Index = () => {
         {/* Output Editor */}
         <div 
           className="flex flex-col min-h-[400px] rounded-lg overflow-hidden border border-border bg-card"
-          style={{ width: `calc(${100 - leftWidth}% - 0.5rem)` }}
+          style={{ width: isMobile ? '100%' : `calc(${100 - leftWidth}% - 0.5rem)` }}
         >
           <div className={`px-4 border-b border-border flex items-center justify-between bg-secondary/50 transition-all duration-300 ${
             isFullscreen ? 'py-1' : 'py-2'
@@ -644,15 +926,25 @@ const Index = () => {
                 </span>
               )}
             <span className="text-xs text-muted-foreground">
-                {formatCount(output.length)}
+                {formatFileSize(output.length)}
             </span>
             </div>
             <div className="flex items-center gap-2">
               <Button
+                onClick={saveToLocalStorage}
+                size="icon"
+                variant="ghost"
+                className={`transition-all duration-200 hover:bg-primary hover:text-black active:scale-95 ${isFullscreen ? 'h-6 w-6' : 'h-7 w-7'}`}
+                disabled={!output}
+                title="Save to Recent Outputs"
+              >
+                <Save className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+              </Button>
+              <Button
                 onClick={copyToClipboard}
                 size="icon"
                 variant="ghost"
-                className={`transition-all duration-200 hover:bg-secondary active:scale-95 ${isFullscreen ? 'h-6 w-6' : 'h-7 w-7'}`}
+                className={`transition-all duration-200 hover:bg-primary hover:text-black active:scale-95 ${isFullscreen ? 'h-6 w-6' : 'h-7 w-7'}`}
                 disabled={!output}
                 title="Copy to clipboard"
               >
@@ -662,11 +954,21 @@ const Index = () => {
                 onClick={downloadJSON}
                 size="icon"
                 variant="ghost"
-                className={`transition-all duration-200 hover:bg-secondary active:scale-95 ${isFullscreen ? 'h-6 w-6' : 'h-7 w-7'}`}
+                className={`transition-all duration-200 hover:bg-primary hover:text-black active:scale-95 ${isFullscreen ? 'h-6 w-6' : 'h-7 w-7'}`}
                 disabled={!output}
                 title="Download JSON"
               >
                 <Download className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+              </Button>
+              <Button
+                onClick={clearOutput}
+                size="icon"
+                variant="ghost"
+                className={`transition-all duration-200 hover:bg-primary hover:text-black active:scale-95 ${isFullscreen ? 'h-6 w-6' : 'h-7 w-7'}`}
+                disabled={!output}
+                title="Clear Output"
+              >
+                <BrushCleaning className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
               </Button>
             </div>
           </div>
@@ -716,6 +1018,69 @@ const Index = () => {
         </div>
       </footer>
       )}
+
+      {/* Recent Outputs Sidebar */}
+      <RecentOutputs
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        onRestore={handleRestoreFromSidebar}
+        refreshTrigger={refreshSidebar}
+      />
+
+      {/* Large File Ready Modal */}
+      <Dialog open={showLargeFileModal} onOpenChange={setShowLargeFileModal}>
+        <DialogContent onClose={() => setShowLargeFileModal(false)}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              ✅ All done!
+            </DialogTitle>
+            <DialogDescription className="pt-4 text-base">
+              Your formatted JSON ({largeFileSize.toFixed(0)} MB) is ready — too large to preview, but you can download it below.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-6">
+            <Button
+              onClick={downloadJSON}
+              className="w-full sm:w-auto"
+              size="lg"
+            >
+              <Download className="w-5 h-5 mr-2" />
+              Download JSON
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Large Paste Warning Modal */}
+      <Dialog open={showLargePasteWarning} onOpenChange={setShowLargePasteWarning}>
+        <DialogContent onClose={() => setShowLargePasteWarning(false)}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              ⚠️ Content Too Large
+            </DialogTitle>
+            <DialogDescription className="pt-4 text-base space-y-3">
+              <p>
+                You're trying to paste {attemptedPasteSize.toFixed(1)} MB of content, which may make your browser unresponsive.
+              </p>
+
+            
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-6">
+            <Button
+              onClick={() => {
+                setShowLargePasteWarning(false);
+                fileInputRef.current?.click();
+              }}
+              className="w-full sm:w-auto"
+              size="lg"
+            >
+              <Upload className="w-5 h-5 mr-2" />
+              Upload File Instead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
