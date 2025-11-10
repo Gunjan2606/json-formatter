@@ -14,19 +14,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "JSON Formatter - Fast & Beautiful JSON Tool",
-  description: "A lightning-fast JSON formatter and validator. Format, minify, and beautify JSON with error detection, theme support, and handles large files effortlessly.",
-  authors: [{ name: "JSON Formatter" }],
+  title: "JSON Formatter & Validator Online | Format, Beautify & Minify JSON - jsonformatter.gg",
+  description: "Free online JSON Formatter and Validator by jsonformatter.gg. Instantly format, validate, beautify, or minify JSON data. Supports large files, dark mode, error highlighting, and secure local processing.",
+  authors: [{ name: "jsonformatter.gg" }],
   openGraph: {
-    title: "JSON Formatter - Fast & Beautiful JSON Tool",
-    description: "Format and validate JSON instantly with our powerful, beautiful tool",
+    title: "JSON Formatter & Validator Online | Format, Beautify & Minify JSON",
+    description: "Use jsonformatter.gg to quickly format, validate, beautify, and compress JSON. Handles large files with speed, privacy, and modern UI.",
+    url: "https://jsonformatter.gg",
+    siteName: "jsonformatter.gg",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    site: "@Lovable",
+    site: "@jsonformattergg",
+    title: "JSON Formatter & Validator Online | jsonformatter.gg",
+    description: "Fast, free JSON formatter and validator. Format, beautify, minify, and check JSON instantly — with support for large files and dark mode.",
   },
 };
+
 
 export default function RootLayout({
   children,
