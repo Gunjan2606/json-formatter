@@ -32,7 +32,6 @@ import {
 } from "lucide-react";
 import { useToast } from "../hooks/use-toast";
 import { ErrorDisplay } from "../components/formatter/ErrorDisplay";
-import { ThemeSelector } from "../components/formatter/ThemeSelector";
 import { RecentOutputs } from "../components/formatter/RecentOutputs";
 import { saveOutput, getAllOutputs } from "../lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
@@ -57,7 +56,7 @@ const Index = () => {
   const [activeMode, setActiveMode] = useState<'format' | 'minify'>('format'); // Format is default
   const [error, setError] = useState<{ message: string; line?: number; column?: number } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [editorTheme, setEditorTheme] = useState<"vs-dark" | "light">("vs-dark");
+  const editorTheme = "vs-dark"; // Fixed to dark mode
   const [isProcessing, setIsProcessing] = useState(false);
   const [leftWidth, setLeftWidth] = useState(50); // percentage
   const [isDragging, setIsDragging] = useState(false);
@@ -643,8 +642,8 @@ const Index = () => {
       <header className={`border-b border-border bg-card transition-all duration-300 ${
         isFullscreen ? 'py-1' : ''
       }`}>
-        <div className={`container mx-auto px-4 transition-all duration-300 ${
-          isFullscreen ? 'py-1' : 'py-2.5'
+        <div className={`transition-all duration-300 ${
+          isFullscreen ? 'py-1 px-2' : 'py-2.5 px-4'
         }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -682,7 +681,6 @@ const Index = () => {
               >
                 <Search className={`${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} />
               </Button>
-              {!isFullscreen && <ThemeSelector theme={editorTheme} onThemeChange={setEditorTheme} />}
               <Button
                 variant="ghost"
                 size="icon"
@@ -712,7 +710,7 @@ const Index = () => {
       {/* Upload/Processing Progress */}
       {uploadProgress > 0 && uploadProgress < 100 && (
         <div className="bg-card border-b border-border">
-          <div className="container mx-auto px-4 py-2">
+          <div className="px-4 py-2">
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground whitespace-nowrap">
                 {uploadProgress < 30 ? 'Reading file' : 
@@ -821,18 +819,7 @@ const Index = () => {
               </Button>
             </div>
           </div>
-          <div className="flex-1 relative">
-            {/* Show drag-and-drop when editor is empty */}
-            {!input && !isProcessing && (
-              <div className="absolute inset-0 flex items-center justify-center p-8 z-10">
-                <FileUpload
-                  onFileSelect={handleFileSelect}
-                  accept=".json"
-                  disabled={isProcessing}
-                  className="max-w-md w-full"
-                />
-              </div>
-            )}
+          <div className="flex-1">
             <Editor
               height="100%"
               defaultLanguage="json"
@@ -1003,7 +990,7 @@ const Index = () => {
       {/* Footer */}
       {!isFullscreen && (
         <footer className="border-t border-border bg-card py-2 px-4">
-          <div className="container mx-auto flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-2 text-xs">
               {(() => {
                 const sizeMB = input.length / (1024 * 1024);
@@ -1032,7 +1019,7 @@ const Index = () => {
         <DialogContent onClose={() => setShowLargeFileModal(false)}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
-              ✅ All done!
+               All done!
             </DialogTitle>
             <DialogDescription className="pt-4 text-base">
               Your formatted JSON ({largeFileSize.toFixed(0)} MB) is ready — too large to preview, but you can download it below.
@@ -1053,32 +1040,29 @@ const Index = () => {
 
       {/* Large Paste Warning Modal */}
       <Dialog open={showLargePasteWarning} onOpenChange={setShowLargePasteWarning}>
-        <DialogContent onClose={() => setShowLargePasteWarning(false)}>
+        <DialogContent onClose={() => setShowLargePasteWarning(false)} className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
-              ⚠️ Content Too Large
+               Content Too Large
             </DialogTitle>
-            <DialogDescription className="pt-4 text-base space-y-3">
-              <p>
-                You're trying to paste {attemptedPasteSize.toFixed(1)} MB of content, which may make your browser unresponsive.
+            <DialogDescription className="pt-4 text-base">
+              <p className="mb-4">
+                You're trying to paste {attemptedPasteSize.toFixed(1)} MB of content, which may make your browser unresponsive. Please upload your file instead.
               </p>
-
-            
+              
+              
+              {/* Drag and Drop Component */}
+              <FileUpload
+                onFileSelect={(file) => {
+                  setShowLargePasteWarning(false);
+                  handleFileSelect(file);
+                }}
+                accept=".json"
+                disabled={false}
+                className="w-full"
+              />
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-6">
-            <Button
-              onClick={() => {
-                setShowLargePasteWarning(false);
-                fileInputRef.current?.click();
-              }}
-              className="w-full sm:w-auto"
-              size="lg"
-            >
-              <Upload className="w-5 h-5 mr-2" />
-              Upload File Instead
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
