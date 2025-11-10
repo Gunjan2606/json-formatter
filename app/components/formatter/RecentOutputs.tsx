@@ -123,7 +123,7 @@ export function RecentOutputs({ onRestore, onClose, isOpen, refreshTrigger }: Re
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-6 text-center">
             <History className="w-12 h-12 mb-3 opacity-20" />
             <p className="text-sm font-medium mb-1">No saved outputs yet</p>
-            <p className="text-xs">Format JSON and click "Save" to store outputs here</p>
+            <p className="text-xs">Format JSON and click &quot;Save&quot; to store outputs here</p>
           </div>
         ) : (
           <div className="p-3 space-y-2">

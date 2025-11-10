@@ -5,14 +5,16 @@ import dynamic from "next/dynamic";
 import { Button } from "../components/ui/button";
 
 // Polyfill Buffer for browser environment (Monaco Editor compatibility)
+/* eslint-disable @typescript-eslint/no-explicit-any */
 if (typeof window !== 'undefined' && typeof (window as any).Buffer === 'undefined') {
   (window as any).Buffer = function() {
     return new Uint8Array();
   };
   (window as any).Buffer.isBuffer = () => false;
-  (window as any).Buffer.from = (data: any) => new Uint8Array();
+  (window as any).Buffer.from = () => new Uint8Array();
   (window as any).Buffer.alloc = (size: number) => new Uint8Array(size);
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 import {
   Copy,
   Download,
@@ -20,9 +22,6 @@ import {
   Maximize2,
   Code,
   FileJson,
-  Palette,
-  Settings,
-  AlertCircle,
   Search,
   ArrowUpDown,
   Upload,
@@ -65,8 +64,10 @@ const Index = () => {
   const [largeOutputData, setLargeOutputData] = useState<string | null>(null); // Store large output separately
   const [largeInputData, setLargeInputData] = useState<string | null>(null); // Store large input separately
   const largeInputDataRef = useRef<string | null>(null); // Immediate access without state delay
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const inputEditorRef = useRef<any>(null);
   const [isMobile, setIsMobile] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const outputEditorRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -78,12 +79,14 @@ const Index = () => {
   const [showLargePasteWarning, setShowLargePasteWarning] = useState(false);
   const [attemptedPasteSize, setAttemptedPasteSize] = useState(0);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sortObjectKeys = useCallback((obj: any): any => {
     if (Array.isArray(obj)) {
       return obj.map(sortObjectKeys);
     } else if (obj !== null && typeof obj === 'object') {
       return Object.keys(obj)
         .sort()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .reduce((sorted: any, key) => {
           sorted[key] = sortObjectKeys(obj[key]);
           return sorted;
@@ -128,7 +131,6 @@ const Index = () => {
     if (typeof Worker !== 'undefined') {
       try {
         const worker = new Worker('/json-worker.js');
-        const startTime = performance.now();
         
         const timeout = setTimeout(() => {
           worker.terminate();
@@ -143,7 +145,6 @@ const Index = () => {
         worker.onmessage = (event) => {
           clearTimeout(timeout);
           const { success, formatted, error: errorMsg, line, column } = event.data;
-          const endTime = performance.now();
           
           console.log('Worker response:', { success, hasFormatted: !!formatted, error: errorMsg });
           
@@ -198,6 +199,7 @@ const Index = () => {
       const formatted = minify ? JSON.stringify(parsed) : JSON.stringify(parsed, null, 2);
       setOutput(formatted);
       setIsMinified(minify);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } catch (e: any) {
             setError({ message: e.message });
           }
@@ -220,6 +222,7 @@ const Index = () => {
           const formatted = minify ? JSON.stringify(parsed) : JSON.stringify(parsed, null, 2);
           setOutput(formatted);
           setIsMinified(minify);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       const errorMatch = e.message.match(/position (\d+)/);
       const position = errorMatch ? parseInt(errorMatch[1]) : 0;
@@ -243,6 +246,7 @@ const Index = () => {
         const formatted = minify ? JSON.stringify(parsed) : JSON.stringify(parsed, null, 2);
         setOutput(formatted);
         setIsMinified(minify);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (e: any) {
         console.error('JSON processing error:', e);
         const errorMatch = e.message.match(/position (\d+)/);
@@ -307,6 +311,7 @@ const Index = () => {
       
       // Refresh the sidebar to show the new output
       setRefreshSidebar(prev => prev + 1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       toast({
         title: "Save failed",
@@ -354,6 +359,7 @@ const Index = () => {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleEditorPaste = useCallback((editor: any) => {
     // Add paste event listener to prevent large pastes
     const editorDomNode = editor.getDomNode();
@@ -409,6 +415,7 @@ const Index = () => {
     }
   }, []);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleFileUpload = useCallback(async (event: any) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -471,6 +478,7 @@ const Index = () => {
         }, 300);
       }
       
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error('File read error:', err);
       setError({ message: 'File read error: ' + err.message });
@@ -546,6 +554,7 @@ const Index = () => {
         }, 300);
       }
       
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error('File read error:', err);
       setError({ message: 'File read error: ' + err.message });
@@ -1047,7 +1056,7 @@ const Index = () => {
             </DialogTitle>
             <DialogDescription className="pt-4 text-base">
               <p className="mb-4">
-                You're trying to paste {attemptedPasteSize.toFixed(1)} MB of content, which may make your browser unresponsive. Please upload your file instead.
+                You&apos;re trying to paste {attemptedPasteSize.toFixed(1)} MB of content, which may make your browser unresponsive. Please upload your file instead.
               </p>
               
               

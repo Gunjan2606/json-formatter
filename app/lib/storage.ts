@@ -23,7 +23,6 @@ const MAX_OUTPUTS = 10;
  */
 export async function saveOutput(content: string, name?: string): Promise<SavedOutput> {
   const id = `output-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const sizeMB = content.length / (1024 * 1024);
   
   const output: SavedOutput = {
     id,
@@ -41,9 +40,6 @@ export async function saveOutput(content: string, name?: string): Promise<SavedO
   
   // Sort by date (newest first)
   outputs.sort((a, b) => b.date - a.date);
-  
-  // Keep only the most recent 10
-  const outputsToKeep = outputs.slice(0, MAX_OUTPUTS);
   
   // Delete old outputs
   if (outputs.length > MAX_OUTPUTS) {
@@ -65,8 +61,8 @@ export async function saveOutput(content: string, name?: string): Promise<SavedO
 export async function getAllOutputs(): Promise<SavedOutput[]> {
   const outputs: SavedOutput[] = [];
   
-  await jsonStore.iterate<SavedOutput, void>((value) => {
-    outputs.push(value);
+  await jsonStore.iterate((value) => {
+    outputs.push(value as SavedOutput);
   });
   
   // Sort by date (newest first)

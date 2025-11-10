@@ -12,7 +12,7 @@ interface ToolbarProps {
   isProcessing?: boolean;
 }
 
-export const Toolbar = ({ onFormat, onMinify, onCopy, onDownload, isMinified, isProcessing = false }: ToolbarProps) => {
+export const Toolbar = ({ onFormat, onMinify, onCopy, onDownload, isProcessing = false }: ToolbarProps) => {
   return (
     <div className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
       <div className="container mx-auto px-4 py-3">
