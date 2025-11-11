@@ -116,9 +116,13 @@ const Index = () => {
 
   const formatJSON = useCallback((minify: boolean = false, textOverride?: string) => {
     // Use priority: textOverride > ref > largeInputData > input
-    const textToFormat = textOverride !== undefined ? textOverride : (largeInputDataRef.current || largeInputData || input);
+     let textToFormat = textOverride !== undefined ? textOverride : (largeInputDataRef.current || largeInputData || input);
+    //if autoFix is enabled, apply autoFix to the input
+    if (autoFix) {
+      textToFormat = applyAutoFix(textToFormat);
+    }
+
     const sizeMB = textToFormat.length / (1024 * 1024);
-    
     console.log('=== formatJSON called ===');
     console.log('Size:', sizeMB.toFixed(2) + 'MB');
     console.log('Using override:', textOverride !== undefined);
