@@ -646,9 +646,9 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
       {/* Header */}
-      <header className={`border-b border-border bg-card transition-all duration-300 ${
+      <header className={`border-b border-border bg-card transition-all duration-300 flex-shrink-0 ${
         isFullscreen ? 'py-1' : ''
       }`}>
         <div className={`transition-all duration-300 ${
@@ -998,21 +998,26 @@ const Index = () => {
 
       {/* Footer */}
       {!isFullscreen && (
-        <footer className="border-t border-border bg-card py-2 px-4">
+        <footer className="border-t border-border bg-card py-3 px-4 flex-shrink-0">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span>Ready</span>
+            </div>
+            <div className="flex items-center gap-2">
               {(() => {
-                const sizeMB = input.length / (1024 * 1024);
-                if (sizeMB > 30) return <span className="text-primary">🌊 Large File ({formatCount(input.length)})</span>;
-                if (input.length > 100000) return <span className="text-primary">🚀 Worker ({formatCount(input.length)})</span>;
+                const inputSize = input.length || 0;
+                const outputSize = output.length || 0;
+                if (inputSize > 0) {
+                  return <span>Input: {formatFileSize(inputSize)}</span>;
+                }
                 return null;
               })()}
+              {output && (
+                <span className="ml-2">Output: {formatFileSize(output.length)}</span>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-              {isProcessing && <span className="text-primary">Processing...</span>}
-          </div>
-        </div>
-      </footer>
+        </footer>
       )}
 
       {/* Recent Outputs Sidebar */}
