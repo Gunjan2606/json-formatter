@@ -19,19 +19,21 @@ import {
   Copy,
   Download,
   Minimize2,
-  Maximize2,
   Code,
   FileJson,
-  Search,
   ArrowUpDown,
   Upload,
   Save,
-  History,
   BrushCleaning,
+  Wand2,
+  Type,
 } from "lucide-react";
+import { jsonrepair } from 'jsonrepair';
 import { useToast } from "../hooks/use-toast";
 import { ErrorDisplay } from "../components/formatter/ErrorDisplay";
 import { RecentOutputs } from "../components/formatter/RecentOutputs";
+import { Header } from "../components/formatter/Header";
+import { Footer } from "../components/formatter/Footer";
 import { saveOutput, getAllOutputs } from "../lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
 import { FileUpload } from "../components/ui/file-upload";
@@ -52,7 +54,7 @@ const Index = () => {
   const [input, setInput] = useState('{\n  "name": "JSON Formatter",\n  "version": "1.0.0",\n  "features": ["Fast", "Beautiful", "Powerful"]\n}');
   const [output, setOutput] = useState("");
   const [isMinified, setIsMinified] = useState(false);
-  const [activeMode, setActiveMode] = useState<'format' | 'minify'>('format'); // Format is default
+  const [activeMode, setActiveMode] = useState<'format' | 'minify' | null>(null);
   const [error, setError] = useState<{ message: string; line?: number; column?: number } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const editorTheme = "vs-dark"; // Fixed to dark mode
@@ -78,6 +80,23 @@ const Index = () => {
   const [largeFileSize, setLargeFileSize] = useState(0);
   const [showLargePasteWarning, setShowLargePasteWarning] = useState(false);
   const [attemptedPasteSize, setAttemptedPasteSize] = useState(0);
+  const [autoFix, setAutoFix] = useState(false);
+  const [showTextSizeMenu, setShowTextSizeMenu] = useState(false);
+  const [fontSize, setFontSize] = useState(14);
+
+  // Load autoFix and fontSize settings from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('jsonFormatter_autoFix');
+      if (saved !== null) {
+        setAutoFix(saved === 'true');
+      }
+      const savedFontSize = localStorage.getItem('jsonFormatter_fontSize');
+      if (savedFontSize !== null) {
+        setFontSize(parseInt(savedFontSize));
+      }
+    }
+  }, []);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sortObjectKeys = useCallback((obj: any): any => {
@@ -359,6 +378,95 @@ const Index = () => {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
+  const applyAutoFix = useCallback((textToFix?: string) => {
+    const sourceText = textToFix || input;
+    if (!sourceText) return sourceText;
+    
+    try {
+      let cleaned = sourceText;
+      
+      // Pre-clean before jsonrepair for better results
+      // Fix common bracket/syntax issues
+      cleaned = cleaned
+        // Fix missing commas between array elements
+        .replace(/"\s*\n\s*"/g, '",\n"')
+        .replace(/}\s*\n\s*{/g, '},\n{')
+        .replace(/]\s*\n\s*\[/g, '],\n[')
+        // Fix missing commas after closing brackets
+        .replace(/}\s*\n\s*"/g, '},\n"')
+        .replace(/]\s*\n\s*"/g, '],\n"')
+        // Remove trailing commas before closing brackets
+        .replace(/,(\s*[}\]])/g, '$1');
+      
+      // Apply jsonrepair for comprehensive fixes
+      const fixed = jsonrepair(cleaned);
+      
+      if (!textToFix) {
+        // Manual fix - update state and editor
+        setInput(fixed);
+        if (inputEditorRef.current && inputEditorRef.current.setValue) {
+          inputEditorRef.current.setValue(fixed);
+        }
+        toast({
+          title: "JSON Auto-Fixed"
+          
+        });
+      }
+      
+      return fixed;
+    } catch (err) {
+      if (!textToFix) {
+        toast({
+          title: "Auto-fix failed",
+          description: "Could not repair JSON. Please check syntax manually.",
+          variant: "destructive",
+        });
+      }
+      return sourceText;
+    }
+  }, [input, toast]);
+
+  const handleAutoFixClick = useCallback(() => {
+    // First, fix the current JSON immediately
+    if (input.trim()) {
+      applyAutoFix();
+    }
+    
+    // Then toggle the auto-fix setting for future pastes/uploads
+    const newValue = !autoFix;
+    setAutoFix(newValue);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('jsonFormatter_autoFix', String(newValue));
+    }
+    
+    if (input.trim()) {
+      // Already showed fix toast from applyAutoFix
+      setTimeout(() => {
+        toast({
+          title: newValue ? "Auto-Fix Enabled" : "Auto-Fix Disabled",
+          description: newValue ? "Future JSON will be auto-fixed on paste/upload" : "Auto-fix turned off for future",
+        });
+      }, 500);
+    } else {
+      toast({
+        title: newValue ? "Auto-Fix Enabled" : "Auto-Fix Disabled",
+        description: newValue ? "JSON will be auto-fixed on paste/upload" : "Auto-fix turned off",
+      });
+    }
+  }, [autoFix, input, toast, applyAutoFix]);
+
+  const handleTextSizeChange = useCallback((size: number) => {
+    setFontSize(size);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('jsonFormatter_fontSize', String(size));
+    }
+    setShowTextSizeMenu(false);
+    toast({
+      title: "Text Size Updated",
+      description: `Font size set to ${size === 12 ? 'Small' : size === 14 ? 'Medium' : 'Large'}`,
+    });
+  }, [toast]);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleEditorPaste = useCallback((editor: any) => {
     // Add paste event listener to prevent large pastes
@@ -443,14 +551,29 @@ const Index = () => {
       
       if (sizeMB < EDITOR_SAFE_LIMIT) {
         // Small files: Load into editor and format normally
-        setInput(text);
+        let processedText = text;
+        
+        // Auto-fix if enabled
+        if (autoFix) {
+          try {
+            processedText = jsonrepair(text);
+            toast({
+              title: "Auto-Fixed",
+              description: "JSON automatically repaired from uploaded file",
+            });
+          } catch (err: unknown) {
+            processedText = text;
+          }
+        }
+        
+        setInput(processedText);
         setLargeInputData(null); // Clear any previous large data
         largeInputDataRef.current = null;
         setUploadProgress(60);
         
         setTimeout(() => {
           console.log('Starting auto-format in', activeMode, 'mode');
-          formatJSON(activeMode === 'minify', text);
+          formatJSON(activeMode === 'minify', processedText);
         }, 500);
       } else {
         // Large files: DON'T load into editor (will crash Monaco)
@@ -519,14 +642,29 @@ const Index = () => {
       
       if (sizeMB < EDITOR_SAFE_LIMIT) {
         // Small files: Load into editor and format normally
-        setInput(text);
+        let processedText = text;
+        
+        // Auto-fix if enabled
+        if (autoFix) {
+          try {
+            processedText = jsonrepair(text);
+            toast({
+              title: "Auto-Fixed",
+              description: "JSON automatically repaired from uploaded file",
+            });
+          } catch (err: unknown) {
+            processedText = text;
+          }
+        }
+        
+        setInput(processedText);
         setLargeInputData(null); // Clear any previous large data
         largeInputDataRef.current = null;
         setUploadProgress(60);
         
         setTimeout(() => {
           console.log('Starting auto-format in', activeMode, 'mode');
-          formatJSON(activeMode === 'minify', text);
+          formatJSON(activeMode === 'minify', processedText);
         }, 500);
       } else {
         // Large files: DON'T load into editor (will crash Monaco)
@@ -562,6 +700,34 @@ const Index = () => {
       setIsProcessing(false);
     }
   }, [formatJSON, activeMode]);
+
+  // Auto re-format when sort is toggled (if a mode is active)
+  useEffect(() => {
+    if (activeMode && output) {
+      // Re-format with the new sort setting
+      if (activeMode === 'format') {
+        formatJSON(false);
+      } else if (activeMode === 'minify') {
+        formatJSON(true);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortKeys]);
+
+  // Close text size menu when clicking outside
+  useEffect(() => {
+    if (!showTextSizeMenu) return;
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.text-size-menu-container')) {
+        setShowTextSizeMenu(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showTextSizeMenu]);
 
   // Handle Ctrl/Cmd + F to open search
   useEffect(() => {
@@ -647,74 +813,22 @@ const Index = () => {
 
   return (
     <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className={`border-b border-border bg-card transition-all duration-300 flex-shrink-0 ${
-        isFullscreen ? 'py-1' : ''
-      }`}>
-        <div className={`transition-all duration-300 ${
-          isFullscreen ? 'py-1 px-2' : 'py-2.5 px-4'
-        }`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {!isFullscreen && (
-              <div className="p-1.5 rounded-lg bg-gradient-to-br from-primary to-accent">
-                <FileJson className="w-4 h-4 text-primary-foreground" />
-              </div>
-              )}
-              <div>
-                <h1 className={`font-bold text-foreground transition-all duration-300 ${
-                  isFullscreen ? 'text-sm' : 'text-lg'
-                }`}>
-                  JSON Formatter
-                </h1>
-                {!isFullscreen && (
-                <p className="text-xs text-muted-foreground">Fast, accurate, and reliable</p>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleSearch}
-                className={isFullscreen ? 'h-7 w-7' : ''}
-                title="Search (Cmd/Ctrl+F)"
-              >
-                <Search className={`${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleFullscreen}
-                className={isFullscreen ? 'h-7 w-7' : ''}
-              >
-                {isFullscreen ? <Minimize2 className={`${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} /> : <Maximize2 className="w-4 h-4" />}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className={`${isFullscreen ? 'h-7' : 'h-8'} flex items-center gap-2 px-3`}
-                title="Recent Outputs"
-              >
-                <History className={`${isFullscreen ? 'w-3 h-3' : 'w-4 h-4'}`} />
-                {!isFullscreen && (
-                  <span className="text-sm font-medium">
-                    History {savedOutputsCount > 0 && `(${savedOutputsCount})`}
-                  </span>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header 
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
+        onSearch={handleSearch}
+        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+        savedOutputsCount={savedOutputsCount}
+      />
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
 
       {/* Upload/Processing Progress */}
       {uploadProgress > 0 && uploadProgress < 100 && (
@@ -771,6 +885,24 @@ const Index = () => {
               >
                 <Upload className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
               </Button>
+              <div className="w-px h-4 bg-border" />
+              <div className="relative group">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleAutoFixClick}
+                  className={`${isFullscreen ? 'h-5 w-5' : 'h-6 w-6'} ${autoFix ? 'text-primary bg-primary/10' : ''}`}
+                  title={autoFix ? "Fix JSON & Disable Auto-Fix" : "Fix JSON & Enable Auto-Fix"}
+                >
+                  <Wand2 className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+                </Button>
+                {!isFullscreen && (
+                  <div className="absolute hidden group-hover:block top-full left-1/2 -translate-x-1/2 mt-1 px-2 py-1 bg-popover text-popover-foreground text-xs rounded shadow-lg whitespace-nowrap z-50 border border-border">
+                    Auto-Fix: {autoFix ? 'ON ✓' : 'OFF'}
+                    <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-popover border-l border-t border-border rotate-45"></div>
+                  </div>
+                )}
+              </div>
               <span className="text-xs text-muted-foreground">
                 {formatFileSize(input.length)}
               </span>
@@ -793,8 +925,44 @@ const Index = () => {
                 }`}
               >
                 <ArrowUpDown className="w-3 h-3 mr-1" />
-                {!isFullscreen && "Sort"}
+                
               </Button>
+              <div className="w-px h-4 bg-border" />
+              <div className="relative text-size-menu-container">
+                <Button
+                  onClick={() => setShowTextSizeMenu(!showTextSizeMenu)}
+                  size="sm"
+                  variant="ghost"
+                  className={`text-xs transition-all duration-200 ${isFullscreen ? 'h-6 w-6' : 'h-7 w-7'}`}
+                  title="Text size"
+                >
+                  <Type className="w-3 h-3" />
+                </Button>
+                {showTextSizeMenu && (
+                  <div className="absolute top-full left-0 mt-1 w-28 bg-card border border-border rounded-lg shadow-lg z-50">
+                    <div className="p-1">
+                      <button
+                        onClick={() => handleTextSizeChange(12)}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-secondary rounded-md transition-colors ${fontSize === 12 ? 'bg-primary/20 text-primary' : ''}`}
+                      >
+                        Small
+                      </button>
+                      <button
+                        onClick={() => handleTextSizeChange(14)}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-secondary rounded-md transition-colors ${fontSize === 14 ? 'bg-primary/20 text-primary' : ''}`}
+                      >
+                        Medium
+                      </button>
+                      <button
+                        onClick={() => handleTextSizeChange(16)}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-secondary rounded-md transition-colors ${fontSize === 16 ? 'bg-primary/20 text-primary' : ''}`}
+                      >
+                        Large
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="w-px h-4 bg-border" />
               <Button
                 onClick={() => {
@@ -806,7 +974,7 @@ const Index = () => {
                 className={`text-xs transition-all duration-200 active:scale-95 ${isFullscreen ? 'h-6 px-2' : 'h-7'} ${
                   activeMode === 'format' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
                 }`}
-                disabled={isProcessing}
+                disabled={isProcessing || !input.trim()}
               >
                 <Code className="w-3 h-3 mr-1" />
                 Format
@@ -821,7 +989,7 @@ const Index = () => {
                 className={`text-xs transition-all duration-200 active:scale-95 ${isFullscreen ? 'h-6 px-2' : 'h-7'} ${
                   activeMode === 'minify' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
                 }`}
-                disabled={isProcessing}
+                disabled={isProcessing || !input.trim()}
               >
                 <Minimize2 className="w-3 h-3 mr-1" />
                 Minify
@@ -856,9 +1024,33 @@ const Index = () => {
                   return;
                 }
                 
-                setInput(value || "");
+                let processedValue = value || "";
+                
+                // Auto-fix if enabled and significant change detected (paste)
+                if (autoFix && value && value.length > input.length + 10) {
+                  try {
+                    const fixed = applyAutoFix(value);
+                    if (fixed !== value) {
+                      processedValue = fixed;
+                      // Update editor with fixed value
+                      setTimeout(() => {
+                        if (inputEditorRef.current && inputEditorRef.current.setValue) {
+                          inputEditorRef.current.setValue(processedValue);
+                        }
+                      }, 100);
+                      toast({
+                        title: "Auto-Fixed on Paste",
+                        description: "JSON automatically repaired",
+                      });
+                    }
+                  } catch (err) {
+                    processedValue = value;
+                  }
+                }
+                
+                setInput(processedValue);
                 // Move cursor and scroll to start after paste
-                if (inputEditorRef.current && value && value.length > input.length + 100) {
+                if (inputEditorRef.current && processedValue && processedValue.length > input.length + 100) {
                   requestAnimationFrame(() => {
                     inputEditorRef.current?.setPosition({ lineNumber: 1, column: 1 });
                     inputEditorRef.current?.revealLineInCenter(1);
@@ -872,7 +1064,7 @@ const Index = () => {
               }}
               options={{
                 minimap: { enabled: false },
-                fontSize: 14,
+                fontSize: fontSize,
                 lineNumbers: "on",
                 scrollBeyondLastLine: false,
                 automaticLayout: true,
@@ -980,7 +1172,7 @@ const Index = () => {
               options={{
                 readOnly: true,
                 minimap: { enabled: false },
-                fontSize: 14,
+                fontSize: fontSize,
                 lineNumbers: "on",
                 scrollBeyondLastLine: false,
                 automaticLayout: true,
@@ -996,29 +1188,7 @@ const Index = () => {
         </div>
       </div>
 
-      {/* Footer */}
-      {!isFullscreen && (
-        <footer className="border-t border-border bg-card py-3 px-4 flex-shrink-0">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <span>Ready</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {(() => {
-                const inputSize = input.length || 0;
-                const outputSize = output.length || 0;
-                if (inputSize > 0) {
-                  return <span>Input: {formatFileSize(inputSize)}</span>;
-                }
-                return null;
-              })()}
-              {output && (
-                <span className="ml-2">Output: {formatFileSize(output.length)}</span>
-              )}
-            </div>
-          </div>
-        </footer>
-      )}
+      <Footer isFullscreen={isFullscreen} />
 
       {/* Recent Outputs Sidebar */}
       <RecentOutputs
