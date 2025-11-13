@@ -891,7 +891,7 @@ const Index = () => {
   // Debug: Log when modal state changes
   useEffect(() => {
     if (showLargePasteWarning) {
-      console.log('🎨 Large Paste Warning Modal should now be visible!');
+      console.log(' Large Paste Warning Modal should now be visible!');
       console.log('attemptedPasteSize:', attemptedPasteSize);
     }
   }, [showLargePasteWarning, attemptedPasteSize]);
