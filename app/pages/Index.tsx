@@ -27,6 +27,7 @@ import {
   BrushCleaning,
   Wand2,
   Type,
+  Share2,
 } from "lucide-react";
 import { jsonrepair } from 'jsonrepair';
 import { useToast } from "../hooks/use-toast";
@@ -49,7 +50,33 @@ const Editor = dynamic(
     ),
   }
 );
-
+const unwrapStringifiedJSON = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(unwrapStringifiedJSON);
+  } else if (obj !== null && typeof obj === 'object') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: any = {};
+    for (const key in obj) {
+      result[key] = unwrapStringifiedJSON(obj[key]);
+    }
+    return result;
+  } else if (typeof obj === 'string') {
+    // Try to parse the string as JSON
+    try {
+      const trimmed = obj.trim();
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
+          (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+        const parsed = JSON.parse(obj);
+        // Recursively unwrap the parsed object
+        return unwrapStringifiedJSON(parsed);
+      }
+    } catch (e) {
+      // Not valid JSON, return as-is
+      return obj;
+    }
+  }
+  return obj;
+};
 const Index = () => {
   const [input, setInput] = useState('{\n  "name": "JSON Formatter",\n  "version": "1.0.0",\n  "features": ["Fast", "Beautiful", "Powerful"]\n}');
   const [output, setOutput] = useState("");
@@ -83,6 +110,9 @@ const Index = () => {
   const [autoFix, setAutoFix] = useState(false);
   const [showTextSizeMenu, setShowTextSizeMenu] = useState(false);
   const [fontSize, setFontSize] = useState(14);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string>('');
+  const [isSharing, setIsSharing] = useState(false);
 
   // Load autoFix and fontSize settings from localStorage on mount
   useEffect(() => {
@@ -113,6 +143,10 @@ const Index = () => {
     }
     return obj;
   }, []);
+
+  // Recursively unwrap stringified JSON
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
 
   const formatJSON = useCallback((minify: boolean = false, textOverride?: string) => {
     // Use priority: textOverride > ref > largeInputData > input
@@ -284,7 +318,8 @@ const Index = () => {
         setIsProcessing(false);
       }
     }
-  }, [input, largeInputData, toast, sortKeys, sortObjectKeys]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input, largeInputData, toast, sortKeys]);
 
   const copyToClipboard = useCallback(() => {
     const textToCopy = largeOutputData || output || largeInputData || input;
@@ -341,6 +376,71 @@ const Index = () => {
         description: error.message || "Could not save output",
         variant: "destructive",
       });
+    }
+  }, [output, largeOutputData, toast]);
+
+  const handleShare = useCallback(async () => {
+    const dataToShare = largeOutputData || output;
+    
+    if (!dataToShare || dataToShare.trim().length === 0) {
+      toast({
+        title: "Nothing to share",
+        description: "Please format JSON first before sharing.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const sizeMB = dataToShare.length / (1024 * 1024);
+    
+    if (sizeMB > 10) {
+      toast({
+        title: "File too large",
+        description: "File.io supports files up to 10MB. Your file is " + sizeMB.toFixed(1) + "MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSharing(true);
+
+    try {
+      const blob = new Blob([dataToShare], { type: 'application/json' });
+      const formData = new FormData();
+      formData.append('file', blob, 'formatted.json');
+
+      // Use API route to avoid CORS on localhost
+      const response = await fetch('/api/share', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.message || 'Upload failed');
+      }
+      
+      if (result.success && result.link) {
+        setShareUrl(result.link);
+        setShowShareModal(true);
+        toast({
+          title: "Share link created!",
+          description: "Your JSON is ready to share (expires in 1 week)",
+        });
+      } else {
+        throw new Error(result.message || 'Failed to get share link');
+      }
+    } catch (error: unknown) {
+      console.error('Share error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast({
+        title: "Share not available on localhost",
+        description: "File.io blocks localhost requests. This feature will work on your live domain!",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSharing(false);
     }
   }, [output, largeOutputData, toast]);
 
@@ -403,16 +503,32 @@ const Index = () => {
         .replace(/,(\s*[}\]])/g, '$1');
       
       // Apply jsonrepair for comprehensive fixes
-      const fixed = jsonrepair(cleaned);
+      let fixed = jsonrepair(cleaned);
+      
+      // Unwrap stringified JSON
+      try {
+        let parsed = JSON.parse(fixed);
+        const unwrapped = unwrapStringifiedJSON(parsed);
+        
+        // Apply sort keys if enabled (only for manual fix to output)
+        if (!textToFix && sortKeys) {
+          parsed = sortObjectKeys(unwrapped);
+          fixed = JSON.stringify(parsed, null, 2);
+        } else {
+          fixed = JSON.stringify(unwrapped, null, 2);
+        }
+      } catch (e) {
+        // If parsing fails, keep the fixed string as is
+      }
       
       if (!textToFix) {
-        // Manual fix - update state and editor
-        setInput(fixed);
-        if (inputEditorRef.current && inputEditorRef.current.setValue) {
-          inputEditorRef.current.setValue(fixed);
-        }
+        // Manual fix - output the fixed version, keep input raw
+        setOutput(fixed);
+        setActiveMode('format');
+        setIsMinified(false);
+        setError(null);
         toast({
-          title: "JSON Auto-Fixed"
+          title: "JSON Auto-Fixed & Unwrapped"
           
         });
       }
@@ -428,7 +544,7 @@ const Index = () => {
       }
       return sourceText;
     }
-  }, [input, toast]);
+  }, [input, toast, unwrapStringifiedJSON, sortKeys, sortObjectKeys]);
 
   const handleAutoFixClick = useCallback(() => {
     // First, fix the current JSON immediately
@@ -554,31 +670,40 @@ const Index = () => {
       const EDITOR_SAFE_LIMIT = 30; // Monaco can handle up to ~30MB
       
       if (sizeMB < EDITOR_SAFE_LIMIT) {
-        // Small files: Load into editor and format normally
-        let processedText = text;
-        
-        // Auto-fix if enabled
-        if (autoFix) {
-          try {
-            processedText = jsonrepair(text);
-            toast({
-              title: "Auto-Fixed",
-              description: "JSON automatically repaired from uploaded file",
-            });
-          } catch (err: unknown) {
-            processedText = text;
-          }
-        }
-        
-        setInput(processedText);
+        // Small files: Load into editor (keep raw)
+        setInput(text);
         setLargeInputData(null); // Clear any previous large data
         largeInputDataRef.current = null;
         setUploadProgress(60);
         
-        setTimeout(() => {
-          console.log('Starting auto-format in', activeMode, 'mode');
-          formatJSON(activeMode === 'minify', processedText);
-        }, 500);
+        // Auto-fix if enabled - process and put result in output
+        if (autoFix) {
+          try {
+            const fixed = applyAutoFix(text);
+            setOutput(fixed);
+            setActiveMode(activeMode || 'format');
+            setIsMinified(activeMode === 'minify');
+            setError(null);
+            setUploadProgress(100);
+            setIsProcessing(false);
+            toast({
+              title: "Auto-Fixed & Unwrapped",
+              description: "JSON automatically repaired from uploaded file",
+            });
+          } catch (err: unknown) {
+            // If auto-fix fails, try normal format
+            setTimeout(() => {
+              console.log('Auto-fix failed, trying normal format');
+              formatJSON(activeMode === 'minify', text);
+            }, 500);
+          }
+        } else {
+          // No auto-fix - format normally
+          setTimeout(() => {
+            console.log('Starting auto-format in', activeMode, 'mode');
+            formatJSON(activeMode === 'minify', text);
+          }, 500);
+        }
       } else {
         // Large files: DON'T load into editor (will crash Monaco)
         // Store the actual data and keep editor empty
@@ -617,7 +742,7 @@ const Index = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [formatJSON, activeMode]);
+  }, [formatJSON, activeMode, autoFix, applyAutoFix, toast]);
 
   // Handle file selection from FileUpload component
   const handleFileSelect = useCallback(async (file: File) => {
@@ -645,31 +770,40 @@ const Index = () => {
       const EDITOR_SAFE_LIMIT = 30; // Monaco can handle up to ~30MB
       
       if (sizeMB < EDITOR_SAFE_LIMIT) {
-        // Small files: Load into editor and format normally
-        let processedText = text;
-        
-        // Auto-fix if enabled
-        if (autoFix) {
-          try {
-            processedText = jsonrepair(text);
-            toast({
-              title: "Auto-Fixed",
-              description: "JSON automatically repaired from uploaded file",
-            });
-          } catch (err: unknown) {
-            processedText = text;
-          }
-        }
-        
-        setInput(processedText);
+        // Small files: Load into editor (keep raw)
+        setInput(text);
         setLargeInputData(null); // Clear any previous large data
         largeInputDataRef.current = null;
         setUploadProgress(60);
         
-        setTimeout(() => {
-          console.log('Starting auto-format in', activeMode, 'mode');
-          formatJSON(activeMode === 'minify', processedText);
-        }, 500);
+        // Auto-fix if enabled - process and put result in output
+        if (autoFix) {
+          try {
+            const fixed = applyAutoFix(text);
+            setOutput(fixed);
+            setActiveMode(activeMode || 'format');
+            setIsMinified(activeMode === 'minify');
+            setError(null);
+            setUploadProgress(100);
+            setIsProcessing(false);
+            toast({
+              title: "Auto-Fixed & Unwrapped",
+              description: "JSON automatically repaired from uploaded file",
+            });
+          } catch (err: unknown) {
+            // If auto-fix fails, try normal format
+            setTimeout(() => {
+              console.log('Auto-fix failed, trying normal format');
+              formatJSON(activeMode === 'minify', text);
+            }, 500);
+          }
+        } else {
+          // No auto-fix - format normally
+          setTimeout(() => {
+            console.log('Starting auto-format in', activeMode, 'mode');
+            formatJSON(activeMode === 'minify', text);
+          }, 500);
+        }
       } else {
         // Large files: DON'T load into editor (will crash Monaco)
         // Store the actual data and keep editor empty
@@ -703,12 +837,12 @@ const Index = () => {
       setUploadProgress(0);
       setIsProcessing(false);
     }
-  }, [formatJSON, activeMode]);
+  }, [formatJSON, activeMode, autoFix, applyAutoFix, toast]);
 
   // Auto re-format when sort is toggled (if a mode is active)
   useEffect(() => {
     if (activeMode && output) {
-      // Re-format with the new sort setting
+      // Re-format with the new settings
       if (activeMode === 'format') {
         formatJSON(false);
       } else if (activeMode === 'minify') {
@@ -861,7 +995,7 @@ const Index = () => {
       )}
 
       {/* Error Display */}
-      {error && <ErrorDisplay error={error} />}
+      {error && <ErrorDisplay error={error} onClose={() => setError(null)} />}
 
       {/* Editors */}
       <div id="editor-container" className={`flex-1 flex flex-col md:flex-row gap-4 md:gap-0 overflow-hidden transition-all duration-300 ${
@@ -896,7 +1030,7 @@ const Index = () => {
                   size="icon"
                   onClick={handleAutoFixClick}
                   className={`${isFullscreen ? 'h-5 w-5' : 'h-6 w-6'} ${autoFix ? 'text-primary bg-primary/10' : ''}`}
-                  title={autoFix ? "Fix JSON & Disable Auto-Fix" : "Fix JSON & Enable Auto-Fix"}
+                  title={autoFix ? "Fix & unwrap JSON to output (keeps input raw)" : "Fix & unwrap JSON to output (keeps input raw)"}
                 >
                   <Wand2 className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
                 </Button>
@@ -927,6 +1061,7 @@ const Index = () => {
                 className={`text-xs transition-all duration-200 ${isFullscreen ? 'h-6 px-2' : 'h-7'} ${
                   sortKeys ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''
                 }`}
+                title="Sort keys alphabetically"
               >
                 <ArrowUpDown className="w-3 h-3 mr-1" />
                 
@@ -971,7 +1106,13 @@ const Index = () => {
               <Button
                 onClick={() => {
                   setActiveMode('format');
-                  formatJSON(false);
+                  // If auto-fix is enabled, apply auto-fix first (which also formats)
+                  // Otherwise, just format
+                  if (autoFix) {
+                    applyAutoFix(); // This will auto-fix, unwrap, and output to output panel
+                  } else {
+                    formatJSON(false);
+                  }
                 }}
                 size="sm"
                 variant={activeMode === 'format' ? "default" : "ghost"}
@@ -986,7 +1127,26 @@ const Index = () => {
               <Button
                 onClick={() => {
                   setActiveMode('minify');
-                  formatJSON(true);
+                  // If auto-fix is enabled, apply auto-fix then minify
+                  if (autoFix) {
+                    try {
+                      const fixed = applyAutoFix(input);
+                      // Minify the fixed result
+                      const parsed = JSON.parse(fixed);
+                      const minified = JSON.stringify(parsed);
+                      setOutput(minified);
+                      setIsMinified(true);
+                      setError(null);
+                      toast({
+                        title: "Auto-Fixed & Minified",
+                        description: "JSON automatically repaired and minified",
+                      });
+                    } catch (err) {
+                      formatJSON(true);
+                    }
+                  } else {
+                    formatJSON(true);
+                  }
                 }}
                 size="sm"
                 variant={activeMode === 'minify' ? "default" : "ghost"}
@@ -1028,33 +1188,30 @@ const Index = () => {
                   return;
                 }
                 
-                let processedValue = value || "";
+                // Keep raw value in input
+                setInput(value || "");
                 
                 // Auto-fix if enabled and significant change detected (paste)
                 if (autoFix && value && value.length > input.length + 10) {
                   try {
                     const fixed = applyAutoFix(value);
                     if (fixed !== value) {
-                      processedValue = fixed;
-                      // Update editor with fixed value
-                      setTimeout(() => {
-                        if (inputEditorRef.current && inputEditorRef.current.setValue) {
-                          inputEditorRef.current.setValue(processedValue);
-                        }
-                      }, 100);
+                      // Put fixed version in output, keep input raw
+                      setOutput(fixed);
+                      setActiveMode('format');
+                      setIsMinified(false);
+                      setError(null);
                       toast({
                         title: "Auto-Fixed on Paste",
-                        description: "JSON automatically repaired",
+                        description: "JSON automatically repaired & unwrapped",
                       });
                     }
                   } catch (err) {
-                    processedValue = value;
+                    // Keep raw input as is
                   }
                 }
-                
-                setInput(processedValue);
                 // Move cursor and scroll to start after paste
-                if (inputEditorRef.current && processedValue && processedValue.length > input.length + 100) {
+                if (inputEditorRef.current && value && value.length > input.length + 100) {
                   requestAnimationFrame(() => {
                     inputEditorRef.current?.setPosition({ lineNumber: 1, column: 1 });
                     inputEditorRef.current?.revealLineInCenter(1);
@@ -1131,6 +1288,20 @@ const Index = () => {
                 title="Save to Recent Outputs"
               >
                 <Save className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+              </Button>
+              <Button
+                onClick={handleShare}
+                size="icon"
+                variant="ghost"
+                className={`transition-all duration-200 hover:bg-primary hover:text-black active:scale-95 ${isFullscreen ? 'h-6 w-6' : 'h-7 w-7'}`}
+                disabled={!output || isSharing}
+                title="Share via link (up to 10MB, 1 week expiry)"
+              >
+                {isSharing ? (
+                  <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Share2 className={`${isFullscreen ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+                )}
               </Button>
               <Button
                 onClick={copyToClipboard}
@@ -1251,6 +1422,69 @@ const Index = () => {
               />
             </DialogDescription>
           </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share Modal */}
+      <Dialog open={showShareModal} onOpenChange={setShowShareModal}>
+        <DialogContent onClose={() => setShowShareModal(false)} className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              🔗 Share Link Created
+            </DialogTitle>
+            <DialogDescription className="pt-4 text-base">
+              <p className="mb-4">
+                Your JSON has been uploaded to file.io. Share this link to give others access:
+              </p>
+              
+              <div className="bg-secondary p-4 rounded-lg mb-4">
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="text" 
+                    value={shareUrl} 
+                    readOnly 
+                    className="flex-1 bg-transparent border-none outline-none text-sm font-mono select-all"
+                    onClick={(e) => e.currentTarget.select()}
+                  />
+                  <Button
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareUrl);
+                      toast({
+                        title: "Link copied!",
+                        description: "Share link copied to clipboard",
+                      });
+                    }}
+                    size="sm"
+                    variant="ghost"
+                    className="shrink-0"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                ⚠️ <strong>Important:</strong> This link will expire in <strong>1 week</strong> and can only be downloaded <strong>once</strong>. 
+                Save the link or download the file before sharing.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-6">
+            <Button
+              onClick={() => {
+                navigator.clipboard.writeText(shareUrl);
+                toast({
+                  title: "Link copied!",
+                  description: "Share link copied to clipboard",
+                });
+              }}
+              variant="default"
+              size="lg"
+            >
+              <Copy className="w-5 h-5 mr-2" />
+              Copy Link
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
