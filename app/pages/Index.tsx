@@ -824,7 +824,7 @@ const Index = () => {
         
         // Format in worker - pass text directly to avoid state timing issues
         setTimeout(() => {
-          console.log('Processing large file in', activeMode, 'mode');
+          console.log('Processing large file in ', activeMode, 'mode');
           setIsProcessing(true);
           formatJSON(activeMode === 'minify', text); // Pass text directly for auto-format
         }, 300);
