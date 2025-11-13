@@ -435,7 +435,7 @@ const Index = () => {
       console.error('Share error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       toast({
-        title: "Share not available on localhost",
+        title: "Share is not available on localhost",
         description: "File.io blocks localhost requests. This feature will work on your live domain!",
         variant: "destructive",
       });
