@@ -37,6 +37,7 @@ import { ErrorDisplay } from "../components/formatter/ErrorDisplay";
 import { RecentOutputs } from "../components/formatter/RecentOutputs";
 import { Header } from "../components/formatter/Header";
 import { Footer } from "../components/formatter/Footer";
+import { InfoSections } from "../components/formatter/InfoSections";
 import { saveOutput, getAllOutputs } from "../lib/storage";
 import {
   Dialog,
@@ -977,7 +978,7 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="h-screen bg-background text-foreground flex flex-col overflow-hidden">
+    <div className={`${isFullscreen ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-background text-foreground flex flex-col`}>
       <Header
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
@@ -1032,9 +1033,10 @@ const Index = () => {
       {/* Editors */}
       <div
         id="editor-container"
-        className={`flex-1 flex flex-col md:flex-row gap-4 md:gap-0 overflow-hidden transition-all duration-300 ${
+        className={`${isFullscreen ? 'flex-1' : 'flex-shrink-0'} flex flex-col md:flex-row gap-4 md:gap-0 ${isFullscreen ? 'overflow-hidden' : ''} transition-all duration-300 ${
           isFullscreen ? "p-2" : "p-4"
         }`}
+        style={isFullscreen ? {} : { height: '85vh', minHeight: '600px' }}
       >
         {/* Input Editor */}
         <div
@@ -1459,6 +1461,13 @@ const Index = () => {
           </div>
         </div>
       </div>
+
+      {/* Info Sections - Only show when not in fullscreen */}
+      {!isFullscreen && (
+        <div className="flex-shrink-0 bg-background border-t border-border">
+          <InfoSections />
+        </div>
+      )}
 
       <Footer isFullscreen={isFullscreen} />
 
