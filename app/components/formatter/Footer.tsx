@@ -152,18 +152,16 @@ export const Footer = ({ isFullscreen }: FooterProps) => {
           <div className="space-y-4">
             <h3 className="font-semibold text-sm uppercase tracking-wider">Follow Us</h3>
             <div className="flex flex-wrap gap-3">
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
+              <a href="https://x.com/json__gg" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
                 <Twitter className="w-4 h-4" />
                 <span className="text-sm">Twitter/X</span>
               </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
-                <Linkedin className="w-4 h-4" />
-                <span className="text-sm">LinkedIn</span>
-              </a>
+             
               <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
                 <span className="text-sm">Reddit</span>
               </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
+              <a href="https://dev.to/pineapple_26" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2">
+                <ExternalLink className="w-4 h-4" />
                 <span className="text-sm">Dev.to</span>
               </a>
             </div>

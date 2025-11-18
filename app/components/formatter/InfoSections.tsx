@@ -325,17 +325,17 @@ export const InfoSections = () => {
       <section className="bg-card border border-border rounded-lg p-4 space-y-3">
         <h2 className="text-xl font-bold mb-4">Know more about JSON</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-          <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-            How to Create JSON File?
-          </a>
-          <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-            JSON Full Form
-          </a>
-          <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+          <a href="https://dev.to/pineapple_26/understanding-json-javascript-object-notation-1nd3" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
             What is JSON?
           </a>
-          <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-            JSON Example with all data types including JSON Array
+          <a href="https://dev.to/pineapple_26/json-full-form-2j2" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+            JSON Full Form
+          </a>
+          <a href="https://dev.to/pineapple_26/how-to-create-a-json-file-3-easy-methods-2025-guide-474n" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+            How to Create JSON File?
+          </a>
+          <a href="https://dev.to/pineapple_26/json-example-with-all-data-types-31nd" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
+            JSON Example with all data types 
           </a>
           <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
             Python Pretty Print JSON

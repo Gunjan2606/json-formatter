@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
-import { Download, RotateCcw, Trash2, X, History, Trash, AlertTriangle } from "lucide-react";
-import { SavedOutput, getAllOutputs, deleteOutput, clearAllOutputs, formatSize } from "../../lib/storage";
+import { Download, RotateCcw, Trash2, X, History, Trash, AlertTriangle, Pencil } from "lucide-react";
+import { SavedOutput, getAllOutputs, deleteOutput, clearAllOutputs, formatSize, renameOutput } from "../../lib/storage";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../ui/dialog";
 
 interface RecentOutputsProps {
@@ -17,6 +17,8 @@ export function RecentOutputs({ onRestore, onClose, isOpen, refreshTrigger }: Re
   const [outputs, setOutputs] = useState<SavedOutput[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showClearDialog, setShowClearDialog] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
 
   const loadOutputs = async () => {
     setIsLoading(true);
@@ -55,6 +57,25 @@ export function RecentOutputs({ onRestore, onClose, isOpen, refreshTrigger }: Re
     await loadOutputs();
     setShowClearDialog(false);
     onClose(); // Close the sidebar after clearing all
+  };
+
+  const handleRename = (output: SavedOutput) => {
+    setRenamingId(output.id);
+    setNewName(output.name);
+  };
+
+  const handleRenameSubmit = async () => {
+    if (renamingId && newName.trim()) {
+      await renameOutput(renamingId, newName.trim());
+      await loadOutputs();
+      setRenamingId(null);
+      setNewName("");
+    }
+  };
+
+  const handleRenameCancel = () => {
+    setRenamingId(null);
+    setNewName("");
   };
 
   const formatDate = (timestamp: number) => {
@@ -134,9 +155,20 @@ export function RecentOutputs({ onRestore, onClose, isOpen, refreshTrigger }: Re
               >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate" title={output.name}>
-                      {output.name}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-medium truncate flex-1" title={output.name}>
+                        {output.name}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRename(output)}
+                        className="h-5 w-5 text-muted-foreground hover:text-primary flex-shrink-0"
+                        title="Rename"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </Button>
+                    </div>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs text-muted-foreground">
                         {formatSize(output.size)}
@@ -193,6 +225,53 @@ export function RecentOutputs({ onRestore, onClose, isOpen, refreshTrigger }: Re
           Max 10 outputs • Auto-deletes oldest
         </p>
       </div>
+
+      {/* Rename Dialog */}
+      <Dialog open={renamingId !== null} onOpenChange={handleRenameCancel}>
+        <DialogContent onClose={handleRenameCancel}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-primary" />
+              Rename Output
+            </DialogTitle>
+            <DialogDescription className="pt-4">
+              Enter a new name for this saved output to make it easier to identify.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleRenameSubmit();
+                } else if (e.key === "Escape") {
+                  handleRenameCancel();
+                }
+              }}
+              className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="Enter new name..."
+              autoFocus
+            />
+          </div>
+          <DialogFooter className="mt-6 gap-2">
+            <Button
+              variant="ghost"
+              onClick={handleRenameCancel}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRenameSubmit}
+              disabled={!newName.trim()}
+            >
+              <Pencil className="w-4 h-4 mr-2" />
+              Rename
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Clear All Confirmation Dialog */}
       <Dialog open={showClearDialog} onOpenChange={setShowClearDialog}>

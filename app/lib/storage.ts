@@ -79,6 +79,17 @@ export async function getOutput(id: string): Promise<SavedOutput | null> {
 }
 
 /**
+ * Update the name of a specific output
+ */
+export async function renameOutput(id: string, newName: string): Promise<void> {
+  const output = await jsonStore.getItem<SavedOutput>(id);
+  if (output) {
+    output.name = newName;
+    await jsonStore.setItem(id, output);
+  }
+}
+
+/**
  * Delete a specific output
  */
 export async function deleteOutput(id: string): Promise<void> {

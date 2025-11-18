@@ -30,6 +30,7 @@ import {
   BrushCleaning,
   Wand2,
   Type,
+  Link as LinkIcon,
 } from "lucide-react";
 import { jsonrepair } from "jsonrepair";
 import { useToast } from "../hooks/use-toast";
@@ -131,6 +132,9 @@ const Index = () => {
   const [autoFix, setAutoFix] = useState(false);
   const [showTextSizeMenu, setShowTextSizeMenu] = useState(false);
   const [fontSize, setFontSize] = useState(14);
+  const [showUrlDialog, setShowUrlDialog] = useState(false);
+  const [urlInput, setUrlInput] = useState("");
+  const [isLoadingUrl, setIsLoadingUrl] = useState(false);
 
   // Load autoFix and fontSize settings from localStorage on mount
   useEffect(() => {
@@ -368,9 +372,9 @@ const Index = () => {
                 : JSON.stringify(parsed, null, 2);
               setOutput(formatted);
               setIsMinified(minify);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            } catch (e: any) {
-              setError({ message: e.message });
+            } catch (e: unknown) {
+              const errorMessage = e instanceof Error ? e.message : "Unknown error";
+              setError({ message: errorMessage });
             }
             setIsProcessing(false);
           };
@@ -393,13 +397,13 @@ const Index = () => {
               : JSON.stringify(parsed, null, 2);
             setOutput(formatted);
             setIsMinified(minify);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } catch (e: any) {
-            const errorMatch = e.message.match(/position (\d+)/);
+          } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : "Unknown error";
+            const errorMatch = errorMessage.match(/position (\d+)/);
             const position = errorMatch ? parseInt(errorMatch[1]) : 0;
             const lines = textToFormat.substring(0, position).split("\n");
             setError({
-              message: e.message,
+              message: errorMessage,
               line: lines.length,
               column: lines[lines.length - 1].length + 1,
             });
@@ -419,14 +423,14 @@ const Index = () => {
             : JSON.stringify(parsed, null, 2);
           setOutput(formatted);
           setIsMinified(minify);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } catch (e: any) {
+        } catch (e: unknown) {
           console.error("JSON processing error:", e);
-          const errorMatch = e.message.match(/position (\d+)/);
+          const errorMessage = e instanceof Error ? e.message : "Unknown error";
+          const errorMatch = errorMessage.match(/position (\d+)/);
           const position = errorMatch ? parseInt(errorMatch[1]) : 0;
           const lines = textToFormat.substring(0, position).split("\n");
           setError({
-            message: e.message || "Invalid JSON format",
+            message: errorMessage || "Invalid JSON format",
             line: lines.length,
             column: lines[lines.length - 1].length + 1,
           });
@@ -494,11 +498,11 @@ const Index = () => {
 
       // Refresh the sidebar to show the new output
       setRefreshSidebar((prev) => prev + 1);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Could not save output";
       toast({
         title: "Save failed",
-        description: error.message || "Could not save output",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -741,10 +745,10 @@ const Index = () => {
           }, 300);
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("File read error:", err);
-        setError({ message: "File read error: " + err.message });
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+        setError({ message: "File read error: " + errorMessage });
         setUploadProgress(0);
         setIsProcessing(false);
       }
@@ -853,16 +857,156 @@ const Index = () => {
           }, 300);
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("File read error:", err);
-        setError({ message: "File read error: " + err.message });
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+        setError({ message: "File read error: " + errorMessage });
         setUploadProgress(0);
         setIsProcessing(false);
       }
     },
     [formatJSON, activeMode, autoFix, applyAutoFix, toast]
   );
+
+  // Handle loading JSON from URL
+  const handleLoadFromUrl = useCallback(async () => {
+    if (!urlInput.trim()) {
+      toast({
+        title: "URL Required",
+        description: "Please enter a valid URL",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoadingUrl(true);
+    setError(null);
+    setUploadProgress(10);
+
+    try {
+      // Validate URL format
+      let url = urlInput.trim();
+      if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        url = "https://" + url;
+      }
+
+      setUploadProgress(30);
+
+      // Fetch data from URL
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      setUploadProgress(60);
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch: ${response.status} ${response.statusText}`
+        );
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (
+        contentType &&
+        !contentType.includes("application/json") &&
+        !contentType.includes("text/plain") &&
+        !contentType.includes("text/json")
+      ) {
+        // Still try to parse as JSON even if content-type doesn't match
+      }
+
+      const text = await response.text();
+      setUploadProgress(80);
+
+      if (!text.trim()) {
+        throw new Error("The URL returned empty content");
+      }
+
+      const sizeMB = text.length / (1024 * 1024);
+      const EDITOR_SAFE_LIMIT = 30;
+
+      if (sizeMB < EDITOR_SAFE_LIMIT) {
+        setInput(text);
+        setLargeInputData(null);
+        largeInputDataRef.current = null;
+        setUploadProgress(100);
+
+        // Auto-fix if enabled
+        if (autoFix) {
+          try {
+            const fixed = applyAutoFix(text);
+            setOutput(fixed);
+            setActiveMode(activeMode || "format");
+            setIsMinified(activeMode === "minify");
+            setError(null);
+            toast({
+              title: "Loaded & Auto-Fixed",
+              description: "JSON loaded from URL and automatically repaired",
+            });
+          } catch {
+            setTimeout(() => {
+              formatJSON(activeMode === "minify", text);
+            }, 500);
+          }
+        } else {
+          setTimeout(() => {
+            formatJSON(activeMode === "minify", text);
+          }, 500);
+        }
+      } else {
+        // Large file handling
+        largeInputDataRef.current = text;
+        setLargeInputData(text);
+        setInput("");
+
+        if (inputEditorRef.current) {
+          inputEditorRef.current.setValue("");
+        }
+
+        setUploadProgress(100);
+        setTimeout(() => {
+          setIsProcessing(true);
+          formatJSON(activeMode === "minify", text);
+        }, 300);
+      }
+
+      setShowUrlDialog(false);
+      setUrlInput("");
+      toast({
+        title: "Success",
+        description: "JSON loaded from URL successfully",
+      });
+    } catch (err: unknown) {
+      console.error("URL load error:", err);
+      let errorMessage = "Failed to load JSON from URL";
+
+      // Handle CORS errors specifically
+      if (err instanceof Error) {
+        errorMessage = err.message || "Failed to load JSON from URL";
+        if (
+          err.message?.includes("CORS") ||
+          err.message?.includes("Failed to fetch") ||
+          err.name === "TypeError"
+        ) {
+          errorMessage =
+            "CORS error: The server doesn't allow cross-origin requests. Try using a CORS proxy or ensure the API supports CORS.";
+        }
+      }
+
+      setError({ message: errorMessage });
+      toast({
+        title: "Load Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingUrl(false);
+      setUploadProgress(0);
+    }
+  }, [urlInput, autoFix, activeMode, applyAutoFix, formatJSON, toast]);
 
   // Auto re-format when sort is toggled (if a mode is active)
   useEffect(() => {
@@ -1065,6 +1209,17 @@ const Index = () => {
                 title="Upload JSON file"
               >
                 <Upload
+                  className={`${isFullscreen ? "w-3 h-3" : "w-3.5 h-3.5"}`}
+                />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowUrlDialog(true)}
+                className={`${isFullscreen ? "h-5 w-5" : "h-6 w-6"}`}
+                title="Load JSON from URL"
+              >
+                <LinkIcon
                   className={`${isFullscreen ? "w-3 h-3" : "w-3.5 h-3.5"}`}
                 />
               </Button>
@@ -1536,6 +1691,95 @@ const Index = () => {
               />
             </DialogDescription>
           </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
+      {/* Load from URL Dialog */}
+      <Dialog open={showUrlDialog} onOpenChange={setShowUrlDialog}>
+        <DialogContent onClose={() => setShowUrlDialog(false)}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <LinkIcon className="w-5 h-5 text-primary" />
+              Load JSON from URL
+            </DialogTitle>
+            <DialogDescription className="pt-4 text-base">
+              Enter a URL to fetch JSON data. The URL should return valid JSON
+              content.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                URL (HTTP/HTTPS)
+              </label>
+              <input
+                type="text"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isLoadingUrl) {
+                    handleLoadFromUrl();
+                  } else if (e.key === "Escape") {
+                    setShowUrlDialog(false);
+                  }
+                }}
+                placeholder="https://api.example.com/data.json"
+                className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                disabled={isLoadingUrl}
+                autoFocus
+              />
+            </div>
+            <div className="bg-secondary/50 border border-border rounded-md p-3">
+              <p className="text-xs text-muted-foreground">
+                <strong className="text-foreground">Note:</strong> Some URLs
+                may have CORS restrictions. If you encounter CORS errors, you
+                may need to use a CORS proxy or ensure the API supports
+                cross-origin requests.
+              </p>
+            </div>
+            {uploadProgress > 0 && uploadProgress < 100 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Loading...</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="mt-6 gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowUrlDialog(false);
+                setUrlInput("");
+              }}
+              disabled={isLoadingUrl}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLoadFromUrl}
+              disabled={isLoadingUrl || !urlInput.trim()}
+            >
+              {isLoadingUrl ? (
+                <>
+                  <span className="animate-spin mr-2">⏳</span>
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <LinkIcon className="w-4 h-4 mr-2" />
+                  Load JSON
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
