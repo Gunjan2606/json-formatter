@@ -372,9 +372,9 @@ const Index = () => {
                 : JSON.stringify(parsed, null, 2);
               setOutput(formatted);
               setIsMinified(minify);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            } catch (e: any) {
-              setError({ message: e.message });
+            } catch (e: unknown) {
+              const errorMessage = e instanceof Error ? e.message : "Unknown error";
+              setError({ message: errorMessage });
             }
             setIsProcessing(false);
           };
@@ -397,13 +397,13 @@ const Index = () => {
               : JSON.stringify(parsed, null, 2);
             setOutput(formatted);
             setIsMinified(minify);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } catch (e: any) {
-            const errorMatch = e.message.match(/position (\d+)/);
+          } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : "Unknown error";
+            const errorMatch = errorMessage.match(/position (\d+)/);
             const position = errorMatch ? parseInt(errorMatch[1]) : 0;
             const lines = textToFormat.substring(0, position).split("\n");
             setError({
-              message: e.message,
+              message: errorMessage,
               line: lines.length,
               column: lines[lines.length - 1].length + 1,
             });
@@ -423,14 +423,14 @@ const Index = () => {
             : JSON.stringify(parsed, null, 2);
           setOutput(formatted);
           setIsMinified(minify);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } catch (e: any) {
+        } catch (e: unknown) {
           console.error("JSON processing error:", e);
-          const errorMatch = e.message.match(/position (\d+)/);
+          const errorMessage = e instanceof Error ? e.message : "Unknown error";
+          const errorMatch = errorMessage.match(/position (\d+)/);
           const position = errorMatch ? parseInt(errorMatch[1]) : 0;
           const lines = textToFormat.substring(0, position).split("\n");
           setError({
-            message: e.message || "Invalid JSON format",
+            message: errorMessage || "Invalid JSON format",
             line: lines.length,
             column: lines[lines.length - 1].length + 1,
           });
@@ -498,11 +498,11 @@ const Index = () => {
 
       // Refresh the sidebar to show the new output
       setRefreshSidebar((prev) => prev + 1);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Could not save output";
       toast({
         title: "Save failed",
-        description: error.message || "Could not save output",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -745,10 +745,10 @@ const Index = () => {
           }, 300);
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("File read error:", err);
-        setError({ message: "File read error: " + err.message });
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+        setError({ message: "File read error: " + errorMessage });
         setUploadProgress(0);
         setIsProcessing(false);
       }
@@ -857,10 +857,10 @@ const Index = () => {
           }, 300);
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("File read error:", err);
-        setError({ message: "File read error: " + err.message });
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+        setError({ message: "File read error: " + errorMessage });
         setUploadProgress(0);
         setIsProcessing(false);
       }
@@ -979,18 +979,21 @@ const Index = () => {
         title: "Success",
         description: "JSON loaded from URL successfully",
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("URL load error:", err);
-      let errorMessage = err.message || "Failed to load JSON from URL";
+      let errorMessage = "Failed to load JSON from URL";
 
       // Handle CORS errors specifically
-      if (
-        err.message?.includes("CORS") ||
-        err.message?.includes("Failed to fetch") ||
-        err.name === "TypeError"
-      ) {
-        errorMessage =
-          "CORS error: The server doesn't allow cross-origin requests. Try using a CORS proxy or ensure the API supports CORS.";
+      if (err instanceof Error) {
+        errorMessage = err.message || "Failed to load JSON from URL";
+        if (
+          err.message?.includes("CORS") ||
+          err.message?.includes("Failed to fetch") ||
+          err.name === "TypeError"
+        ) {
+          errorMessage =
+            "CORS error: The server doesn't allow cross-origin requests. Try using a CORS proxy or ensure the API supports CORS.";
+        }
       }
 
       setError({ message: errorMessage });
