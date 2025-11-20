@@ -14,7 +14,7 @@ export const XmlInfoSections = () => {
         Format, validate, beautify, and minify XML instantly with our powerful, 
         browser-based XML Formatter. Designed with developers and data engineers in mind, 
         this tool delivers lightning-fast performance, clean formatting, and 100% client-side 
-        processing to keep your data secure. Whether you're working with small snippets or 
+        processing to keep your data secure. Whether you&apos;re working with small snippets or 
         large XML files spanning tens of megabytes, the formatter handles everything smoothly 
         without slowing down your machine.
         <br/>
