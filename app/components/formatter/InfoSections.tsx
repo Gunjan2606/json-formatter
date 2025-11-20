@@ -337,16 +337,28 @@ export const InfoSections = () => {
           <a href="https://dev.to/pineapple_26/json-example-with-all-data-types-31nd" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
             JSON Example with all data types 
           </a>
-          <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+          <a
+            href="https://dev.to/pineapple_26/json-pretty-print-using-python-with-examples-12ha"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-primary transition-colors"
+          >
             Python Pretty Print JSON
           </a>
-          <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-            Read JSON File Using Python
-          </a>
-          <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+          <a
+            href="https://dev.to/pineapple_26/validate-json-using-php-nfj"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-primary transition-colors"
+          >
             Validate JSON using PHP
           </a>
-          <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+          <a
+            href="https://dev.to/pineapple_26/python-load-json-from-file-14i2"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-primary transition-colors"
+          >
             Python Load Json From File
           </a>
         </div>

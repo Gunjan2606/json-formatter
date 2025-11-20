@@ -10,10 +10,11 @@ interface FileUploadProps {
   disabled?: boolean
   className?: string
   maxSizeMB?: number
+  description?: string
 }
 
 export const FileUpload = React.forwardRef<HTMLDivElement, FileUploadProps>(
-  ({ onFileSelect, accept = ".json", disabled = false, className, maxSizeMB }, ref) => {
+  ({ onFileSelect, accept = ".json", disabled = false, className, maxSizeMB, description = "JSON files only" }, ref) => {
     const [isDragging, setIsDragging] = React.useState(false)
     const fileInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -115,7 +116,7 @@ export const FileUpload = React.forwardRef<HTMLDivElement, FileUploadProps>(
             )}
           </p>
           <p className="text-xs text-muted-foreground">
-            JSON files only
+            {description}
             {maxSizeMB && ` • Max ${maxSizeMB}MB`}
           </p>
         </div>

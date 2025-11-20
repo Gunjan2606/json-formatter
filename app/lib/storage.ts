@@ -6,6 +6,9 @@ export interface SavedOutput {
   size: number;
   content: string;
   date: number;
+  format?: string;
+  extension?: string;
+  mimeType?: string;
 }
 
 // Configure localforage for JSON outputs
@@ -21,8 +24,23 @@ const MAX_OUTPUTS = 10;
  * Save a new output to IndexedDB
  * Automatically maintains max 10 outputs
  */
-export async function saveOutput(content: string, name?: string): Promise<SavedOutput> {
+interface SaveOptions {
+  format?: string;
+  extension?: string;
+  mimeType?: string;
+}
+
+export async function saveOutput(
+  content: string,
+  name?: string,
+  options: SaveOptions = {}
+): Promise<SavedOutput> {
   const id = `output-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const {
+    format = 'json',
+    extension = 'json',
+    mimeType = 'application/json',
+  } = options;
   
   const output: SavedOutput = {
     id,
@@ -30,6 +48,9 @@ export async function saveOutput(content: string, name?: string): Promise<SavedO
     size: content.length,
     content,
     date: Date.now(),
+    format,
+    extension,
+    mimeType,
   };
 
   // Get all existing outputs
@@ -58,7 +79,7 @@ export async function saveOutput(content: string, name?: string): Promise<SavedO
 /**
  * Get all saved outputs
  */
-export async function getAllOutputs(): Promise<SavedOutput[]> {
+export async function getAllOutputs(format: string = 'json'): Promise<SavedOutput[]> {
   const outputs: SavedOutput[] = [];
   
   await jsonStore.iterate((value) => {
@@ -66,9 +87,10 @@ export async function getAllOutputs(): Promise<SavedOutput[]> {
   });
   
   // Sort by date (newest first)
-  outputs.sort((a, b) => b.date - a.date);
+  const filtered = outputs.filter((output) => (output.format || 'json') === format);
+  filtered.sort((a, b) => b.date - a.date);
   
-  return outputs;
+  return filtered;
 }
 
 /**

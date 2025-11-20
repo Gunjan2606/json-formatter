@@ -1,5 +1,6 @@
 import { FileJson, Search, Maximize2, Minimize2, History } from "lucide-react";
 import { Button } from "../ui/button";
+import { ReactNode } from "react";
 
 interface HeaderProps {
   isFullscreen: boolean;
@@ -7,9 +8,21 @@ interface HeaderProps {
   onSearch: () => void;
   onToggleSidebar: () => void;
   savedOutputsCount: number;
+  title?: string;
+  description?: string;
+  icon?: ReactNode;
 }
 
-export const Header = ({ isFullscreen, onToggleFullscreen, onSearch, onToggleSidebar, savedOutputsCount }: HeaderProps) => {
+export const Header = ({
+  isFullscreen,
+  onToggleFullscreen,
+  onSearch,
+  onToggleSidebar,
+  savedOutputsCount,
+  title = "JSON Formatter",
+  description = "Fast, accurate, and reliable",
+  icon,
+}: HeaderProps) => {
   return (
     <header className={`border-b border-border bg-card transition-all duration-300 flex-shrink-0 ${
       isFullscreen ? 'py-1' : ''
@@ -21,17 +34,21 @@ export const Header = ({ isFullscreen, onToggleFullscreen, onSearch, onToggleSid
           <div className="flex items-center gap-2">
             {!isFullscreen && (
               <div className="p-1.5 rounded-lg bg-gradient-to-br from-primary to-accent">
-                <FileJson className="w-4 h-4 text-primary-foreground" />
+                {icon ? (
+                  icon
+                ) : (
+                  <FileJson className="w-4 h-4 text-primary-foreground" />
+                )}
               </div>
             )}
             <div>
               <h1 className={`font-bold text-foreground transition-all duration-300 ${
                 isFullscreen ? 'text-sm' : 'text-lg'
               }`}>
-                JSON Formatter
+                {title}
               </h1>
               {!isFullscreen && (
-                <p className="text-xs text-muted-foreground">Fast, accurate, and reliable</p>
+                <p className="text-xs text-muted-foreground">{description}</p>
               )}
             </div>
           </div>

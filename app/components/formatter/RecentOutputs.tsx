@@ -11,9 +11,24 @@ interface RecentOutputsProps {
   onClose: () => void;
   isOpen: boolean;
   refreshTrigger?: number;
+  format?: string;
+  fileExtension?: string;
+  mimeType?: string;
+  emptyStateDescription?: string;
+  title?: string;
 }
 
-export function RecentOutputs({ onRestore, onClose, isOpen, refreshTrigger }: RecentOutputsProps) {
+export function RecentOutputs({
+  onRestore,
+  onClose,
+  isOpen,
+  refreshTrigger,
+  format = "json",
+  fileExtension = "json",
+  mimeType = "application/json",
+  emptyStateDescription = 'Format your data and click "Save" to store outputs here',
+  title = "Recent Outputs",
+}: RecentOutputsProps) {
   const [outputs, setOutputs] = useState<SavedOutput[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showClearDialog, setShowClearDialog] = useState(false);
@@ -22,7 +37,7 @@ export function RecentOutputs({ onRestore, onClose, isOpen, refreshTrigger }: Re
 
   const loadOutputs = async () => {
     setIsLoading(true);
-    const savedOutputs = await getAllOutputs();
+    const savedOutputs = await getAllOutputs(format);
     setOutputs(savedOutputs);
     setIsLoading(false);
   };
@@ -31,18 +46,19 @@ export function RecentOutputs({ onRestore, onClose, isOpen, refreshTrigger }: Re
     if (isOpen) {
       loadOutputs();
     }
-  }, [isOpen, refreshTrigger]);
+  }, [isOpen, refreshTrigger, format]);
 
   const handleRestore = (output: SavedOutput) => {
     onRestore(output.content);
   };
 
   const handleDownload = (output: SavedOutput) => {
-    const blob = new Blob([output.content], { type: "application/json" });
+    const blob = new Blob([output.content], { type: output.mimeType || mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${output.name.replace(/[^a-z0-9]/gi, '_')}.json`;
+    const extension = output.extension || fileExtension;
+    a.download = `${output.name.replace(/[^a-z0-9]/gi, '_')}.${extension}`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -106,7 +122,7 @@ export function RecentOutputs({ onRestore, onClose, isOpen, refreshTrigger }: Re
       <div className="p-4 border-b border-border flex items-center justify-between bg-secondary/50">
         <div className="flex items-center gap-2">
           <History className="w-4 h-4 text-primary" />
-          <h2 className="font-semibold text-sm">Recent Outputs</h2>
+          <h2 className="font-semibold text-sm">{title}</h2>
           <span className="text-xs text-muted-foreground">({outputs.length}/10)</span>
         </div>
         <Button
@@ -144,7 +160,7 @@ export function RecentOutputs({ onRestore, onClose, isOpen, refreshTrigger }: Re
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-6 text-center">
             <History className="w-12 h-12 mb-3 opacity-20" />
             <p className="text-sm font-medium mb-1">No saved outputs yet</p>
-            <p className="text-xs">Format JSON and click &quot;Save&quot; to store outputs here</p>
+            <p className="text-xs">{emptyStateDescription}</p>
           </div>
         ) : (
           <div className="p-3 space-y-2">

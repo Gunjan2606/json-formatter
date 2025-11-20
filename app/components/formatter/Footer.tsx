@@ -1,4 +1,5 @@
 import { FileJson, ExternalLink, Check, Globe, Shield, Lock, Mail, MessageCircle, Bug, Book, Twitter, Github, Linkedin } from "lucide-react";
+import Link from "next/link";
 
 interface FooterProps {
   isFullscreen: boolean;
@@ -14,12 +15,12 @@ export const Footer = ({ isFullscreen }: FooterProps) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Company Section */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
+            <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
               <div className="p-1.5 rounded-lg bg-gradient-to-br from-primary to-accent">
                 <FileJson className="w-4 h-4 text-primary-foreground" />
               </div>
               <span className="font-bold text-lg">jsonformatter.gg</span>
-            </div>
+            </Link>
             <p className="text-sm text-muted-foreground">
               The best free online JSON formatter, validator, viewer, editor, and beautifier tool. Format, validate, beautify, minify, and repair JSON data instantly with privacy-first, local processing.
             </p>
@@ -33,34 +34,34 @@ export const Footer = ({ isFullscreen }: FooterProps) => {
             <h3 className="font-semibold text-sm uppercase tracking-wider">Quick Links</h3>
             <ul className="space-y-2 text-sm">
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                <Link href="/" className="text-muted-foreground hover:text-primary transition-colors">
                   Home
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                <Link href="/" className="text-muted-foreground hover:text-primary transition-colors">
                   JSON Formatter
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                <Link href="/" className="text-muted-foreground hover:text-primary transition-colors">
                   JSON Validator
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                <Link href="/" className="text-muted-foreground hover:text-primary transition-colors">
                   JSON Beautifier
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                <Link href="/" className="text-muted-foreground hover:text-primary transition-colors">
                   JSON Minifier
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
+                <Link href="/" className="text-muted-foreground hover:text-primary transition-colors">
                   JSON Repair Tool
-                </a>
+                </Link>
               </li>
               <li>
                 <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
@@ -95,7 +96,7 @@ export const Footer = ({ isFullscreen }: FooterProps) => {
             <h3 className="font-semibold text-sm uppercase tracking-wider">Popular Tools</h3>
             <ul className="space-y-2 text-sm">
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                <a href="/xml-formatter" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                   XML Formatter
                   <ExternalLink className="w-3 h-3" />
                 </a>
