@@ -33,7 +33,6 @@ export const useJSONFormatter = () => {
 
   const formatJSON = useCallback((minify: boolean = false, textOverride?: string) => {
     const textToFormat = textOverride !== undefined ? textOverride : (largeInputDataRef.current || largeInputData || input);
-    const sizeMB = textToFormat.length / (1024 * 1024);
     
     if (!textToFormat || textToFormat.trim().length === 0) {
       toast({
@@ -116,7 +115,7 @@ export const useJSONFormatter = () => {
         };
         
         worker.postMessage({ action: minify ? 'minify' : 'format', data: textToFormat, sortKeys });
-      } catch (err) {
+      } catch {
         // Direct processing fallback
         try {
           let parsed = JSON.parse(textToFormat);
