@@ -20,11 +20,11 @@ export const XmlInfoSections = () => {
         <br/>
         Built on the same high-performance core as our industry-leading JSON formatter, the 
         XML tool ensures precise indentation, real-time error detection, syntax highlighting, 
-        and automatic structural validation. It’s perfect for debugging APIs, editing large 
+        and automatic structural validation. It&apos;s perfect for debugging APIs, editing large 
         configuration files, analyzing feed data, or simply making unreadable XML human-friendly.
         <br/>
         With support for copy/paste input, file uploads, collapsible nodes, minification, and 
-        instant beautification, this XML Formatter becomes an essential part of any developer's 
+        instant beautification, this XML Formatter becomes an essential part of any developer&apos;s 
         workflow. No installations, no backend requests, no data tracking—just fast, secure, 
         and reliable XML formatting right from your browser.
 

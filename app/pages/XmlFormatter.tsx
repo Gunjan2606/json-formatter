@@ -65,8 +65,12 @@ const XmlFormatter = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [textSizeOpen, setTextSizeOpen] = useState(false);
-  const inputEditorRef = useRef<unknown>(null);
-  const outputEditorRef = useRef<unknown>(null);
+  interface MonacoEditor {
+    layout?: () => void;
+    getAction?: (actionId: string) => { run: () => void } | null;
+  }
+  const inputEditorRef = useRef<MonacoEditor | null>(null);
+  const outputEditorRef = useRef<MonacoEditor | null>(null);
   const quickUploadInputRef = useRef<HTMLInputElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
@@ -241,11 +245,11 @@ const XmlFormatter = () => {
   useEffect(() => {
     // Force editor resize when fullscreen state changes
     const resizeEditors = () => {
-      if (inputEditorRef.current && typeof (inputEditorRef.current as any).layout === 'function') {
-        (inputEditorRef.current as any).layout();
+      if (inputEditorRef.current?.layout) {
+        inputEditorRef.current.layout();
       }
-      if (outputEditorRef.current && typeof (outputEditorRef.current as any).layout === 'function') {
-        (outputEditorRef.current as any).layout();
+      if (outputEditorRef.current?.layout) {
+        outputEditorRef.current.layout();
       }
     };
 

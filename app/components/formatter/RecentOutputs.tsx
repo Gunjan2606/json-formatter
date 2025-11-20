@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "../ui/button";
 import { Download, RotateCcw, Trash2, X, History, Trash, AlertTriangle, Pencil } from "lucide-react";
 import { SavedOutput, getAllOutputs, deleteOutput, clearAllOutputs, formatSize, renameOutput } from "../../lib/storage";
@@ -35,18 +35,18 @@ export function RecentOutputs({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
 
-  const loadOutputs = async () => {
+  const loadOutputs = useCallback(async () => {
     setIsLoading(true);
     const savedOutputs = await getAllOutputs(format);
     setOutputs(savedOutputs);
     setIsLoading(false);
-  };
+  }, [format]);
 
   useEffect(() => {
     if (isOpen) {
       loadOutputs();
     }
-  }, [isOpen, refreshTrigger, format]);
+  }, [isOpen, refreshTrigger, loadOutputs]);
 
   const handleRestore = (output: SavedOutput) => {
     onRestore(output.content);

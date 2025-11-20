@@ -1,4 +1,4 @@
-import { FileJson, ExternalLink, Check, Globe, Shield, Lock, Mail, MessageCircle, Bug, Book, Twitter, Github, Linkedin } from "lucide-react";
+import { FileJson, ExternalLink, Twitter } from "lucide-react";
 import Link from "next/link";
 
 interface FooterProps {
