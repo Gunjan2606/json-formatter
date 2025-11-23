@@ -327,7 +327,7 @@ const JSONCSVConverter = () => {
         title: "Saved",
         description: "Output saved successfully.",
       });
-    } catch (err) {
+    } catch {
       toast({
         title: "Save failed",
         description: "Failed to save output.",
@@ -372,7 +372,7 @@ const JSONCSVConverter = () => {
         });
       };
       reader.readAsText(file);
-    } catch (err) {
+    } catch {
       setError("Failed to process file");
       setIsProcessing(false);
       toast({
