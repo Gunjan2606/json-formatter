@@ -7,11 +7,12 @@ import { Header } from "../components/formatter/Header";
 import { ErrorDisplay } from "../components/formatter/ErrorDisplay";
 import { RecentOutputs } from "../components/formatter/RecentOutputs";
 import { Footer } from "../components/formatter/Footer";
-import { Base64InfoSections } from "../components/formatter/Base64InfoSections";
+import { YAMLInfoSections } from "../components/formatter/YAMLInfoSections";
+import { useYAMLFormatter } from "../hooks/useYAMLFormatter";
 import { useToast } from "../hooks/use-toast";
 import { saveOutput, getAllOutputs } from "../lib/storage";
 import {
-  Lock,
+  FileCode2,
   Save,
   Upload,
   Type,
@@ -19,7 +20,7 @@ import {
   Download,
   BrushCleaning,
   Code,
-  ArrowLeftRight,
+  Minimize2,
   Check,
 } from "lucide-react";
 import {
@@ -42,12 +43,18 @@ const Editor = dynamic(
   }
 );
 
-const Base64Formatter = () => {
-  const [input, setInput] = useState("Hello, World! This is a sample text for Base64 encoding and decoding.");
-  const [output, setOutput] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isEncoded, setIsEncoded] = useState(false);
+const YAMLFormatter = () => {
+  const {
+    input,
+    setInput,
+    output,
+    setOutput,
+    isProcessing,
+    error,
+    setError,
+    isMinified,
+    processYAML,
+  } = useYAMLFormatter();
   const { toast } = useToast();
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -69,94 +76,21 @@ const Base64Formatter = () => {
 
   useEffect(() => {
     const loadCount = async () => {
-      const outputs = await getAllOutputs("base64");
+      const outputs = await getAllOutputs("yaml");
       setSavedOutputsCount(outputs.length);
     };
 
     loadCount();
   }, [refreshSidebar, isSidebarOpen]);
 
-  const handleEncode = useCallback(() => {
-    if (!input.trim()) {
-      toast({
-        title: "Empty input",
-        description: "Please enter text or upload a file to encode.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsProcessing(true);
-    setError(null);
-
-    try {
-      const encoded = btoa(unescape(encodeURIComponent(input)));
-      setOutput(encoded);
-      setIsEncoded(true);
-      toast({
-        title: "Encoded",
-        description: "Text has been encoded to Base64.",
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to encode";
-      setError(errorMessage);
-      toast({
-        title: "Encoding failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [input, toast]);
-
-  const handleDecode = useCallback(() => {
-    if (!input.trim()) {
-      toast({
-        title: "Empty input",
-        description: "Please enter a Base64 string to decode.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsProcessing(true);
-    setError(null);
-
-    try {
-      // Remove whitespace and validate Base64
-      const cleaned = input.trim().replace(/\s/g, "");
-      
-      // Validate Base64 format
-      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned)) {
-        throw new Error("Invalid Base64 string format");
-      }
-
-      const decoded = decodeURIComponent(escape(atob(cleaned)));
-      setOutput(decoded);
-      setIsEncoded(false);
-      toast({
-        title: "Decoded",
-        description: "Base64 string has been decoded.",
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to decode. Please check if the input is a valid Base64 string.";
-      setError(errorMessage);
-      toast({
-        title: "Decoding failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [input, toast]);
+  const handleFormat = useCallback(() => processYAML(false), [processYAML]);
+  const handleMinify = useCallback(() => processYAML(true), [processYAML]);
 
   const handleCopyOutput = useCallback(() => {
     if (!output.trim()) {
       toast({
         title: "Nothing to copy",
-        description: "Please encode or decode first.",
+        description: "Please format YAML first.",
         variant: "destructive",
       });
       return;
@@ -164,7 +98,7 @@ const Base64Formatter = () => {
     navigator.clipboard.writeText(output);
     toast({
       title: "Copied",
-      description: "Output copied to clipboard.",
+      description: "YAML copied to clipboard.",
     });
   }, [output, toast]);
 
@@ -172,129 +106,79 @@ const Base64Formatter = () => {
     if (!output.trim()) {
       toast({
         title: "Nothing to download",
-        description: "Please encode or decode first.",
+        description: "Format or paste YAML before downloading.",
         variant: "destructive",
       });
       return;
     }
 
-    const blob = new Blob([output], { type: "text/plain" });
+    const blob = new Blob([output], { type: "text/yaml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = isEncoded ? "encoded.txt" : "decoded.txt";
-    document.body.appendChild(a);
+    a.download = isMinified ? "minified.yaml" : "formatted.yaml";
     a.click();
-    document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }, [output, isMinified, toast]);
 
-    toast({
-      title: "Downloaded",
-      description: "Output downloaded successfully.",
-    });
-  }, [output, isEncoded, toast]);
+  const handleFileSelect = useCallback(
+    (file: File) => {
+      if (!file.name.toLowerCase().endsWith(".yaml") && !file.name.toLowerCase().endsWith(".yml")) {
+        toast({
+          title: "Unsupported file",
+          description: "Please upload a .yaml or .yml file.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-  const handleClearOutput = useCallback(() => {
-    setOutput("");
-    setIsEncoded(false);
-    setError(null);
-  }, []);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target?.result?.toString() || "";
+        setInput(text);
+        toast({
+          title: "File loaded",
+          description: `Loaded ${file.name}`,
+        });
+      };
+      reader.onerror = () => {
+        toast({
+          title: "Upload failed",
+          description: "Could not read the YAML file.",
+          variant: "destructive",
+        });
+      };
+      reader.readAsText(file);
+    },
+    [setInput, toast]
+  );
 
   const handleSave = useCallback(async () => {
     if (!output.trim()) {
       toast({
         title: "Nothing to save",
-        description: "Please encode or decode first.",
+        description: "Please format YAML first.",
         variant: "destructive",
       });
       return;
     }
 
-    try {
-      const name = `Base64 ${new Date().toLocaleString()}`;
-      await saveOutput(output, name, {
-        format: "base64",
-        extension: isEncoded ? "txt" : "txt",
-        mimeType: "text/plain",
-      });
-      setRefreshSidebar((prev) => prev + 1);
-      setSavedOutputsCount((prev) => prev + 1);
-      toast({
-        title: "Saved",
-        description: "Output saved successfully.",
-      });
-    } catch {
-      toast({
-        title: "Save failed",
-        description: "Failed to save output.",
-        variant: "destructive",
-      });
-    }
-  }, [output, isEncoded, toast]);
+    const name = `YAML ${new Date().toLocaleString()}`;
+    await saveOutput(output, name, {
+      format: "yaml",
+      extension: "yaml",
+      mimeType: "text/yaml",
+    });
+    setRefreshSidebar((prev) => prev + 1);
+    toast({
+      title: "Saved",
+      description: "Formatted YAML stored locally.",
+    });
+  }, [output, toast]);
 
-  const handleFileSelect = useCallback(async (file: File) => {
-    if (file.size > 50 * 1024 * 1024) {
-      toast({
-        title: "File too large",
-        description: "Please select a file smaller than 50MB.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsProcessing(true);
-    setError(null);
-
-    try {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
-        if (content) {
-          setInput(content);
-          toast({
-            title: "File loaded",
-            description: "File content loaded. Click Encode to convert to Base64.",
-          });
-        }
-        setIsProcessing(false);
-      };
-      reader.onerror = () => {
-        setError("Failed to read file");
-        setIsProcessing(false);
-        toast({
-          title: "File read failed",
-          description: "Failed to read the selected file.",
-          variant: "destructive",
-        });
-      };
-      reader.readAsText(file);
-    } catch {
-      setError("Failed to process file");
-      setIsProcessing(false);
-      toast({
-        title: "File processing failed",
-        description: "Failed to process the selected file.",
-        variant: "destructive",
-      });
-    }
-  }, [toast]);
-
-  const handleSwap = useCallback(() => {
-    if (output) {
-      setInput(output);
-      setOutput("");
-      setIsEncoded(false);
-      setError(null);
-    }
-  }, [output]);
-
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-    } else {
-      document.exitFullscreen();
-    }
-  }, []);
+  const handleClearOutput = useCallback(() => {
+    setOutput("");
+  }, [setOutput]);
 
   const handleSearch = useCallback(() => {
     if (inputEditorRef.current?.getAction) {
@@ -302,6 +186,17 @@ const Base64Formatter = () => {
     }
     if (outputEditorRef.current?.getAction) {
       outputEditorRef.current.getAction("actions.find")?.run();
+    }
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (typeof document === "undefined") return;
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
     }
   }, []);
 
@@ -402,16 +297,16 @@ const Base64Formatter = () => {
         onSearch={handleSearch}
         onToggleSidebar={() => setIsSidebarOpen(true)}
         savedOutputsCount={savedOutputsCount}
-        title="Base64 Encoder/Decoder"
-        description="Encode and decode Base64 strings"
-        icon={<Lock className="w-4 h-4 text-primary-foreground" />}
+        title="YAML Formatter"
+        description="Pretty-print, minify, and validate YAML"
+        icon={<FileCode2 className="w-4 h-4 text-primary-foreground" />}
       />
 
       {error && (
         <ErrorDisplay
-          error={{ message: error }}
+          error={error}
           onClose={() => setError(null)}
-          title="Error"
+          title="Invalid YAML"
         />
       )}
 
@@ -440,6 +335,7 @@ const Base64Formatter = () => {
                   <input
                     ref={quickUploadInputRef}
                     type="file"
+                    accept=".yaml,.yml,text/yaml"
                     className="hidden"
                     onChange={handleQuickUploadChange}
                   />
@@ -447,7 +343,7 @@ const Base64Formatter = () => {
                     variant="ghost"
                     size="icon"
                     onClick={handleQuickUploadClick}
-                    title="Upload file"
+                    title="Upload YAML"
                     disabled={isProcessing}
                     className="hover:bg-cyan-500/20 hover:text-cyan-400"
                   >
@@ -487,39 +383,39 @@ const Base64Formatter = () => {
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <Button
-                    onClick={handleEncode}
+                    onClick={handleFormat}
                     size="sm"
                     variant="ghost"
                     disabled={isProcessing}
                     className={`gap-1 px-4 ${
-                      output && isEncoded
-                        ? "bg-cyan-500 text-black hover:bg-cyan-500"
-                        : "hover:bg-cyan-500 hover:text-black"
-                    }`}
-                  >
-                    <Lock className="w-3 h-3" />
-                    Encode
-                  </Button>
-                  <Button
-                    onClick={handleDecode}
-                    size="sm"
-                    variant="ghost"
-                    disabled={isProcessing}
-                    className={`gap-1 px-4 ${
-                      output && !isEncoded
+                      output && !isMinified
                         ? "bg-cyan-500 text-black hover:bg-cyan-500"
                         : "hover:bg-cyan-500 hover:text-black"
                     }`}
                   >
                     <Code className="w-3 h-3" />
-                    Decode
+                    Format
+                  </Button>
+                  <Button
+                    onClick={handleMinify}
+                    size="sm"
+                    variant="ghost"
+                    disabled={isProcessing}
+                    className={`gap-1 px-4 ${
+                      output && isMinified
+                        ? "bg-cyan-500 text-black hover:bg-cyan-500"
+                        : "hover:bg-cyan-500 hover:text-black"
+                    }`}
+                  >
+                    <Minimize2 className="w-3 h-3" />
+                    Minify
                   </Button>
                 </div>
               </div>
               <div className="flex-1 min-h-[320px]">
                 <Editor
                   height="100%"
-                  defaultLanguage="plaintext"
+                  defaultLanguage="yaml"
                   theme="vs-dark"
                   value={input}
                   onChange={(value) => setInput(value || "")}
@@ -554,20 +450,10 @@ const Base64Formatter = () => {
             >
               <div className="flex items-center justify-between border-b border-border px-2 gap-2 flex-wrap" style={{ minHeight: "40px" }}>
                 <div className="flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-primary" />
+                  <FileCode2 className="w-4 h-4 text-primary" />
                   <p className="text-sm font-semibold">Output</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleSwap}
-                    disabled={!output}
-                    className="h-8 w-8 hover:bg-cyan-500/20 hover:text-cyan-400"
-                    title="Swap"
-                  >
-                    <ArrowLeftRight className="w-4 h-4" />
-                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -606,14 +492,14 @@ const Base64Formatter = () => {
                     className="h-8 w-8 hover:bg-cyan-500/20 hover:text-cyan-400"
                     title="Clear"
                   >
-                    <BrushCleaning className="w-4 h-4" />
+                    <BrushCleaning className="w-4 h-4 text-white" />
                   </Button>
                 </div>
               </div>
               <div className="flex-1 min-h-[320px]">
                 <Editor
                   height="100%"
-                  defaultLanguage="plaintext"
+                  defaultLanguage="yaml"
                   theme="vs-dark"
                   value={output}
                   onChange={(value) => setOutput(value || "")}
@@ -630,7 +516,7 @@ const Base64Formatter = () => {
             </div>
           </div>
 
-          {!isFullscreen && <Base64InfoSections />}
+          {!isFullscreen && <YAMLInfoSections />}
         </div>
       </main>
 
@@ -642,21 +528,21 @@ const Base64Formatter = () => {
           setIsSidebarOpen(false);
           toast({
             title: "Restored",
-            description: "Content restored to the editor.",
+            description: "YAML restored to the editor.",
           });
         }}
         onClose={() => setIsSidebarOpen(false)}
         isOpen={isSidebarOpen}
         refreshTrigger={refreshSidebar}
-        format="base64"
-        fileExtension="txt"
-        mimeType="text/plain"
-        title="Base64 History"
-        emptyStateDescription='Encode or decode and click "Save" to store outputs here'
+        format="yaml"
+        fileExtension="yaml"
+        mimeType="text/yaml"
+        title="YAML History"
+        emptyStateDescription='Format YAML and click "Save" to store outputs here'
       />
     </div>
   );
 };
 
-export default Base64Formatter;
+export default YAMLFormatter;
 

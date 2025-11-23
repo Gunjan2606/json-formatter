@@ -102,13 +102,13 @@ export const Footer = ({ isFullscreen }: FooterProps) => {
                 </a>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                <a href="/yaml-formatter" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                   YAML Formatter
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                <a href="/csv-formatter" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                   CSV Formatter
                   <ExternalLink className="w-3 h-3" />
                 </a>
@@ -120,26 +120,20 @@ export const Footer = ({ isFullscreen }: FooterProps) => {
                 </a>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                  URL Encoder/Decoder
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </li>
-              <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                <a href="/json-schema-validator" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                   JSON Schema Validator
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                <a href="/json-diff" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                   JSON Diff Tool
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
-                  JSON to CSV Converter
+                <a href="/json-csv-converter" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                  JSON CSV Converter
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </li>

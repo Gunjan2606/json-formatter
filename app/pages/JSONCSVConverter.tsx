@@ -7,19 +7,20 @@ import { Header } from "../components/formatter/Header";
 import { ErrorDisplay } from "../components/formatter/ErrorDisplay";
 import { RecentOutputs } from "../components/formatter/RecentOutputs";
 import { Footer } from "../components/formatter/Footer";
-import { Base64InfoSections } from "../components/formatter/Base64InfoSections";
+import { JSONCSVInfoSections } from "../components/formatter/JSONCSVInfoSections";
 import { useToast } from "../hooks/use-toast";
 import { saveOutput, getAllOutputs } from "../lib/storage";
+import Papa from "papaparse";
 import {
-  Lock,
+  ArrowLeftRight,
   Save,
   Upload,
   Type,
   Copy,
   Download,
   BrushCleaning,
-  Code,
-  ArrowLeftRight,
+  FileJson,
+  Table,
   Check,
 } from "lucide-react";
 import {
@@ -42,12 +43,114 @@ const Editor = dynamic(
   }
 );
 
-const Base64Formatter = () => {
-  const [input, setInput] = useState("Hello, World! This is a sample text for Base64 encoding and decoding.");
+const DEFAULT_JSON = `[
+  {
+    "name": "John Doe",
+    "age": 30,
+    "email": "john@example.com",
+    "city": "New York"
+  },
+  {
+    "name": "Jane Smith",
+    "age": 25,
+    "email": "jane@example.com",
+    "city": "Los Angeles"
+  }
+]`;
+
+// Flatten nested objects for CSV
+interface FlattenedObject {
+  [key: string]: string | number | boolean | null;
+}
+
+const flattenObject = (obj: Record<string, unknown>, prefix = ""): FlattenedObject => {
+  const flattened: FlattenedObject = {};
+  for (const key in obj) {
+    const value = obj[key];
+    const newKey = prefix ? `${prefix}.${key}` : key;
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      const nestedObj = value as Record<string, unknown>;
+      Object.assign(flattened, flattenObject(nestedObj, newKey));
+    } else if (Array.isArray(value)) {
+      flattened[newKey] = JSON.stringify(value);
+    } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
+      flattened[newKey] = value;
+    } else {
+      flattened[newKey] = String(value);
+    }
+  }
+  return flattened;
+};
+
+const jsonToCSV = (jsonText: string): string => {
+  try {
+    const parsed = JSON.parse(jsonText);
+    let data: Record<string, unknown>[] = [];
+
+    // Handle different JSON structures
+    if (Array.isArray(parsed)) {
+      data = parsed;
+    } else if (typeof parsed === "object" && parsed !== null) {
+      // Single object - convert to array
+      data = [parsed];
+    } else {
+      throw new Error("JSON must be an object or array");
+    }
+
+    if (data.length === 0) {
+      return "";
+    }
+
+    // Flatten nested objects
+    const flattenedData = data.map(item => flattenObject(item));
+
+    // Convert to CSV
+    return Papa.unparse(flattenedData, {
+      header: true,
+      skipEmptyLines: true,
+    });
+  } catch (err) {
+    throw new Error("Failed to convert JSON to CSV: " + (err instanceof Error ? err.message : "Parse error"));
+  }
+};
+
+const csvToJSON = (csvText: string): string => {
+  try {
+    const result = Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim(),
+      transform: (value) => {
+        // Try to parse JSON strings in cells
+        if (value && typeof value === "string") {
+          try {
+            return JSON.parse(value);
+          } catch {
+            return value.trim();
+          }
+        }
+        return value;
+      },
+    });
+
+    if (result.errors.length > 0) {
+      const errorMessages = result.errors.map(e => e.message).join(", ");
+      throw new Error(`CSV parsing errors: ${errorMessages}`);
+    }
+
+    // Format JSON with indentation
+    return JSON.stringify(result.data, null, 2);
+  } catch (err) {
+    throw new Error("Failed to convert CSV to JSON: " + (err instanceof Error ? err.message : "Parse error"));
+  }
+};
+
+const JSONCSVConverter = () => {
+  const [input, setInput] = useState(DEFAULT_JSON);
   const [output, setOutput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isEncoded, setIsEncoded] = useState(false);
+  const [conversionType, setConversionType] = useState<"json-to-csv" | "csv-to-json" | null>(null);
   const { toast } = useToast();
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -69,18 +172,18 @@ const Base64Formatter = () => {
 
   useEffect(() => {
     const loadCount = async () => {
-      const outputs = await getAllOutputs("base64");
+      const outputs = await getAllOutputs("json-csv");
       setSavedOutputsCount(outputs.length);
     };
 
     loadCount();
   }, [refreshSidebar, isSidebarOpen]);
 
-  const handleEncode = useCallback(() => {
+  const handleJSONToCSV = useCallback(() => {
     if (!input.trim()) {
       toast({
         title: "Empty input",
-        description: "Please enter text or upload a file to encode.",
+        description: "Please enter JSON data to convert.",
         variant: "destructive",
       });
       return;
@@ -90,18 +193,18 @@ const Base64Formatter = () => {
     setError(null);
 
     try {
-      const encoded = btoa(unescape(encodeURIComponent(input)));
-      setOutput(encoded);
-      setIsEncoded(true);
+      const result = jsonToCSV(input);
+      setOutput(result);
+      setConversionType("json-to-csv");
       toast({
-        title: "Encoded",
-        description: "Text has been encoded to Base64.",
+        title: "Converted",
+        description: "JSON converted to CSV successfully.",
       });
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to encode";
+      const errorMessage = err instanceof Error ? err.message : "Conversion failed";
       setError(errorMessage);
       toast({
-        title: "Encoding failed",
+        title: "Conversion failed",
         description: errorMessage,
         variant: "destructive",
       });
@@ -110,11 +213,11 @@ const Base64Formatter = () => {
     }
   }, [input, toast]);
 
-  const handleDecode = useCallback(() => {
+  const handleCSVToJSON = useCallback(() => {
     if (!input.trim()) {
       toast({
         title: "Empty input",
-        description: "Please enter a Base64 string to decode.",
+        description: "Please enter CSV data to convert.",
         variant: "destructive",
       });
       return;
@@ -124,26 +227,18 @@ const Base64Formatter = () => {
     setError(null);
 
     try {
-      // Remove whitespace and validate Base64
-      const cleaned = input.trim().replace(/\s/g, "");
-      
-      // Validate Base64 format
-      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned)) {
-        throw new Error("Invalid Base64 string format");
-      }
-
-      const decoded = decodeURIComponent(escape(atob(cleaned)));
-      setOutput(decoded);
-      setIsEncoded(false);
+      const result = csvToJSON(input);
+      setOutput(result);
+      setConversionType("csv-to-json");
       toast({
-        title: "Decoded",
-        description: "Base64 string has been decoded.",
+        title: "Converted",
+        description: "CSV converted to JSON successfully.",
       });
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to decode. Please check if the input is a valid Base64 string.";
+      const errorMessage = err instanceof Error ? err.message : "Conversion failed";
       setError(errorMessage);
       toast({
-        title: "Decoding failed",
+        title: "Conversion failed",
         description: errorMessage,
         variant: "destructive",
       });
@@ -151,12 +246,21 @@ const Base64Formatter = () => {
       setIsProcessing(false);
     }
   }, [input, toast]);
+
+  const handleSwap = useCallback(() => {
+    if (output) {
+      setInput(output);
+      setOutput("");
+      setConversionType(null);
+      setError(null);
+    }
+  }, [output]);
 
   const handleCopyOutput = useCallback(() => {
     if (!output.trim()) {
       toast({
         title: "Nothing to copy",
-        description: "Please encode or decode first.",
+        description: "Please convert first.",
         variant: "destructive",
       });
       return;
@@ -172,17 +276,18 @@ const Base64Formatter = () => {
     if (!output.trim()) {
       toast({
         title: "Nothing to download",
-        description: "Please encode or decode first.",
+        description: "Please convert first.",
         variant: "destructive",
       });
       return;
     }
 
-    const blob = new Blob([output], { type: "text/plain" });
+    const isCSV = conversionType === "json-to-csv";
+    const blob = new Blob([output], { type: isCSV ? "text/csv" : "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = isEncoded ? "encoded.txt" : "decoded.txt";
+    a.download = isCSV ? "converted.csv" : "converted.json";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -192,11 +297,11 @@ const Base64Formatter = () => {
       title: "Downloaded",
       description: "Output downloaded successfully.",
     });
-  }, [output, isEncoded, toast]);
+  }, [output, conversionType, toast]);
 
   const handleClearOutput = useCallback(() => {
     setOutput("");
-    setIsEncoded(false);
+    setConversionType(null);
     setError(null);
   }, []);
 
@@ -204,18 +309,19 @@ const Base64Formatter = () => {
     if (!output.trim()) {
       toast({
         title: "Nothing to save",
-        description: "Please encode or decode first.",
+        description: "Please convert first.",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      const name = `Base64 ${new Date().toLocaleString()}`;
+      const isCSV = conversionType === "json-to-csv";
+      const name = `${conversionType === "json-to-csv" ? "CSV" : "JSON"} ${new Date().toLocaleString()}`;
       await saveOutput(output, name, {
-        format: "base64",
-        extension: isEncoded ? "txt" : "txt",
-        mimeType: "text/plain",
+        format: "json-csv",
+        extension: isCSV ? "csv" : "json",
+        mimeType: isCSV ? "text/csv" : "application/json",
       });
       setRefreshSidebar((prev) => prev + 1);
       setSavedOutputsCount((prev) => prev + 1);
@@ -230,7 +336,7 @@ const Base64Formatter = () => {
         variant: "destructive",
       });
     }
-  }, [output, isEncoded, toast]);
+  }, [output, conversionType, toast]);
 
   const handleFileSelect = useCallback(async (file: File) => {
     if (file.size > 50 * 1024 * 1024) {
@@ -253,7 +359,7 @@ const Base64Formatter = () => {
           setInput(content);
           toast({
             title: "File loaded",
-            description: "File content loaded. Click Encode to convert to Base64.",
+            description: "File content loaded. Click convert to transform.",
           });
         }
         setIsProcessing(false);
@@ -278,15 +384,6 @@ const Base64Formatter = () => {
       });
     }
   }, [toast]);
-
-  const handleSwap = useCallback(() => {
-    if (output) {
-      setInput(output);
-      setOutput("");
-      setIsEncoded(false);
-      setError(null);
-    }
-  }, [output]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -394,6 +491,9 @@ const Base64Formatter = () => {
     setIsDragging(true);
   };
 
+  const inputLanguage = conversionType === "csv-to-json" ? "plaintext" : "json";
+  const outputLanguage = conversionType === "json-to-csv" ? "plaintext" : "json";
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header
@@ -402,9 +502,9 @@ const Base64Formatter = () => {
         onSearch={handleSearch}
         onToggleSidebar={() => setIsSidebarOpen(true)}
         savedOutputsCount={savedOutputsCount}
-        title="Base64 Encoder/Decoder"
-        description="Encode and decode Base64 strings"
-        icon={<Lock className="w-4 h-4 text-primary-foreground" />}
+        title="JSON ↔ CSV Converter"
+        description="Convert between JSON and CSV formats"
+        icon={<ArrowLeftRight className="w-4 h-4 text-primary-foreground" />}
       />
 
       {error && (
@@ -435,11 +535,16 @@ const Base64Formatter = () => {
             >
               <div className="flex items-center justify-between border-b border-border px-2 gap-2 flex-wrap" style={{ minHeight: "40px" }}>
                 <div className="flex items-center gap-2">
-                  <Code className="w-4 h-4 text-primary" />
+                  {conversionType === "csv-to-json" ? (
+                    <Table className="w-4 h-4 text-primary" />
+                  ) : (
+                    <FileJson className="w-4 h-4 text-primary" />
+                  )}
                   <p className="text-sm font-semibold">Input</p>
                   <input
                     ref={quickUploadInputRef}
                     type="file"
+                    accept=".json,.csv,application/json,text/csv"
                     className="hidden"
                     onChange={handleQuickUploadChange}
                   />
@@ -487,39 +592,39 @@ const Base64Formatter = () => {
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <Button
-                    onClick={handleEncode}
+                    onClick={handleJSONToCSV}
                     size="sm"
                     variant="ghost"
                     disabled={isProcessing}
                     className={`gap-1 px-4 ${
-                      output && isEncoded
+                      conversionType === "json-to-csv"
                         ? "bg-cyan-500 text-black hover:bg-cyan-500"
                         : "hover:bg-cyan-500 hover:text-black"
                     }`}
                   >
-                    <Lock className="w-3 h-3" />
-                    Encode
+                    <FileJson className="w-3 h-3" />
+                    JSON to CSV
                   </Button>
                   <Button
-                    onClick={handleDecode}
+                    onClick={handleCSVToJSON}
                     size="sm"
                     variant="ghost"
                     disabled={isProcessing}
                     className={`gap-1 px-4 ${
-                      output && !isEncoded
+                      conversionType === "csv-to-json"
                         ? "bg-cyan-500 text-black hover:bg-cyan-500"
                         : "hover:bg-cyan-500 hover:text-black"
                     }`}
                   >
-                    <Code className="w-3 h-3" />
-                    Decode
+                    <Table className="w-3 h-3" />
+                    CSV to JSON
                   </Button>
                 </div>
               </div>
               <div className="flex-1 min-h-[320px]">
                 <Editor
                   height="100%"
-                  defaultLanguage="plaintext"
+                  defaultLanguage={inputLanguage}
                   theme="vs-dark"
                   value={input}
                   onChange={(value) => setInput(value || "")}
@@ -554,7 +659,11 @@ const Base64Formatter = () => {
             >
               <div className="flex items-center justify-between border-b border-border px-2 gap-2 flex-wrap" style={{ minHeight: "40px" }}>
                 <div className="flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-primary" />
+                  {conversionType === "json-to-csv" ? (
+                    <Table className="w-4 h-4 text-primary" />
+                  ) : (
+                    <FileJson className="w-4 h-4 text-primary" />
+                  )}
                   <p className="text-sm font-semibold">Output</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -613,7 +722,7 @@ const Base64Formatter = () => {
               <div className="flex-1 min-h-[320px]">
                 <Editor
                   height="100%"
-                  defaultLanguage="plaintext"
+                  defaultLanguage={outputLanguage}
                   theme="vs-dark"
                   value={output}
                   onChange={(value) => setOutput(value || "")}
@@ -630,7 +739,7 @@ const Base64Formatter = () => {
             </div>
           </div>
 
-          {!isFullscreen && <Base64InfoSections />}
+          {!isFullscreen && <JSONCSVInfoSections />}
         </div>
       </main>
 
@@ -648,15 +757,15 @@ const Base64Formatter = () => {
         onClose={() => setIsSidebarOpen(false)}
         isOpen={isSidebarOpen}
         refreshTrigger={refreshSidebar}
-        format="base64"
+        format="json-csv"
         fileExtension="txt"
         mimeType="text/plain"
-        title="Base64 History"
-        emptyStateDescription='Encode or decode and click "Save" to store outputs here'
+        title="Conversion History"
+        emptyStateDescription='Convert and click "Save" to store outputs here'
       />
     </div>
   );
 };
 
-export default Base64Formatter;
+export default JSONCSVConverter;
 

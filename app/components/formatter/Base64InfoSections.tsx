@@ -1,6 +1,6 @@
 "use client";
 
-import { Code, FileCode, Shield, Zap, Lock } from "lucide-react";
+import { FileCode, Shield, Zap, Lock } from "lucide-react";
 
 export const Base64InfoSections = () => {
   return (
