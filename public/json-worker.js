@@ -25,26 +25,79 @@ function sortObjectKeys(obj) {
   return obj;
 }
 
+// Unwrap stringified JSON recursively
+function unwrapStringifiedJSON(obj) {
+  if (Array.isArray(obj)) {
+    return obj.map(unwrapStringifiedJSON);
+  } else if (obj !== null && typeof obj === 'object') {
+    const result = {};
+    for (const key in obj) {
+      result[key] = unwrapStringifiedJSON(obj[key]);
+    }
+    return result;
+  } else if (typeof obj === 'string') {
+    // Try to parse the string as JSON
+    try {
+      const trimmed = obj.trim();
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+          (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+        const parsed = JSON.parse(obj);
+        // Recursively unwrap the parsed object
+        return unwrapStringifiedJSON(parsed);
+      }
+    } catch {
+      // Not valid JSON, return as-is
+    }
+  }
+  return obj;
+}
+
 self.onmessage = (event) => {
   const { action, data, sortKeys = false } = event.data;
   
   try {
+    let parsed;
+    
+    // Try to parse as JSON string first (handle stringified JSON)
+    try {
+      const trimmed = data.trim();
+      if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.includes('\\"')) {
+        // It's a stringified JSON, unwrap it
+        const stringValue = JSON.parse(trimmed);
+        if (typeof stringValue === 'string') {
+          // Try to parse the inner JSON
+          try {
+            parsed = JSON.parse(stringValue);
+          } catch {
+            parsed = JSON.parse(data);
+          }
+        } else {
+          parsed = stringValue;
+        }
+      } else {
+        parsed = JSON.parse(data);
+      }
+    } catch {
+      // Fallback to regular parse
+      parsed = JSON.parse(data);
+    }
+    
+    // Unwrap any nested stringified JSON
+    parsed = unwrapStringifiedJSON(parsed);
+    
     if (action === 'format') {
-      let parsed = JSON.parse(data);
       if (sortKeys) {
         parsed = sortObjectKeys(parsed);
       }
       const formatted = JSON.stringify(parsed, null, 2);
       self.postMessage({ success: true, formatted, action: 'format' });
     } else if (action === 'minify') {
-      let parsed = JSON.parse(data);
       if (sortKeys) {
         parsed = sortObjectKeys(parsed);
       }
       const minified = JSON.stringify(parsed);
       self.postMessage({ success: true, formatted: minified, action: 'minify' });
     } else if (action === 'validate') {
-      JSON.parse(data);
       self.postMessage({ success: true, valid: true, action: 'validate' });
     }
   } catch (err) {

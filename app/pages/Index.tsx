@@ -241,6 +241,31 @@ const Index = () => {
         textOverride !== undefined
           ? textOverride
           : largeInputDataRef.current || largeInputData || input;
+      
+      // Try to unwrap stringified JSON if the input looks like a JSON string
+      try {
+        const trimmed = textToFormat.trim();
+        // Check if it's a stringified JSON (starts and ends with quotes, contains escaped quotes)
+        if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.includes('\\"')) {
+          const parsed = JSON.parse(trimmed);
+          if (typeof parsed === "string") {
+            // It's a string containing JSON, try to parse it
+            try {
+              const innerParsed = JSON.parse(parsed);
+              textToFormat = JSON.stringify(innerParsed);
+            } catch {
+              // Not JSON inside, use the unwrapped string
+              textToFormat = parsed;
+            }
+          } else {
+            // It's a stringified object/array, use it directly
+            textToFormat = JSON.stringify(parsed);
+          }
+        }
+      } catch {
+        // Not a stringified JSON, continue with original
+      }
+      
       //if autoFix is enabled, apply autoFix to the input
       if (autoFix) {
         textToFormat = applyAutoFix(textToFormat);
