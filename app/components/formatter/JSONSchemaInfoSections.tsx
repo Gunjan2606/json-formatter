@@ -1,6 +1,6 @@
 "use client";
 
-import { Code, FileCode, Shield, Zap, CheckCircle } from "lucide-react";
+import { FileCode, Shield, Zap, CheckCircle } from "lucide-react";
 
 export const JSONSchemaInfoSections = () => {
   return (

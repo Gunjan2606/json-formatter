@@ -58,29 +58,44 @@ const DEFAULT_JSON_2 = `{
 }`;
 
 interface DiffResult {
-  added: Array<{ path: string; value: any }>;
-  removed: Array<{ path: string; value: any }>;
-  modified: Array<{ path: string; oldValue: any; newValue: any }>;
+  added: Array<{ path: string; value: unknown }>;
+  removed: Array<{ path: string; value: unknown }>;
+  modified: Array<{ path: string; oldValue: unknown; newValue: unknown }>;
 }
 
-const compareJSON = (obj1: any, obj2: any, path = ""): DiffResult => {
+const compareJSON = (obj1: unknown, obj2: unknown, path = ""): DiffResult => {
   const result: DiffResult = {
     added: [],
     removed: [],
     modified: [],
   };
 
-  const allKeys = new Set([...Object.keys(obj1 || {}), ...Object.keys(obj2 || {})]);
+  // Handle non-object types
+  if (typeof obj1 !== "object" || obj1 === null || Array.isArray(obj1) ||
+      typeof obj2 !== "object" || obj2 === null || Array.isArray(obj2)) {
+    if (JSON.stringify(obj1) !== JSON.stringify(obj2)) {
+      result.modified.push({
+        path: path || "root",
+        oldValue: obj1,
+        newValue: obj2,
+      });
+    }
+    return result;
+  }
+
+  const obj1Record = obj1 as Record<string, unknown>;
+  const obj2Record = obj2 as Record<string, unknown>;
+  const allKeys = new Set([...Object.keys(obj1Record || {}), ...Object.keys(obj2Record || {})]);
 
   for (const key of allKeys) {
     const currentPath = path ? `${path}.${key}` : key;
-    const val1 = obj1?.[key];
-    const val2 = obj2?.[key];
+    const val1 = obj1Record?.[key];
+    const val2 = obj2Record?.[key];
 
-    if (!(key in obj1)) {
+    if (!(key in obj1Record)) {
       // Added in obj2
       result.added.push({ path: currentPath, value: val2 });
-    } else if (!(key in obj2)) {
+    } else if (!(key in obj2Record)) {
       // Removed from obj1
       result.removed.push({ path: currentPath, value: val1 });
     } else if (typeof val1 === "object" && val1 !== null && !Array.isArray(val1) &&
@@ -376,7 +391,7 @@ const JSONDiffTool = () => {
         title: "Saved",
         description: "Diff result saved successfully.",
       });
-    } catch (err) {
+    } catch {
       toast({
         title: "Save failed",
         description: "Failed to save diff result.",

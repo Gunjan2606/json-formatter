@@ -29,7 +29,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuItem,
 } from "../components/ui/dropdown-menu";
-import { FileUpload } from "../components/ui/file-upload";
 
 const Editor = dynamic(
   () => import("@monaco-editor/react").then((mod) => mod.default),
@@ -224,7 +223,7 @@ const Base64Formatter = () => {
         title: "Saved",
         description: "Output saved successfully.",
       });
-    } catch (err) {
+    } catch {
       toast({
         title: "Save failed",
         description: "Failed to save output.",
@@ -269,7 +268,7 @@ const Base64Formatter = () => {
         });
       };
       reader.readAsText(file);
-    } catch (err) {
+    } catch {
       setError("Failed to process file");
       setIsProcessing(false);
       toast({

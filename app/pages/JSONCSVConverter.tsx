@@ -19,7 +19,6 @@ import {
   Copy,
   Download,
   BrushCleaning,
-  Code,
   FileJson,
   Table,
   Check,
@@ -59,22 +58,25 @@ const DEFAULT_JSON = `[
   }
 ]`;
 
-const DEFAULT_CSV = `name,age,email,city
-John Doe,30,john@example.com,New York
-Jane Smith,25,jane@example.com,Los Angeles`;
-
 // Flatten nested objects for CSV
-const flattenObject = (obj: any, prefix = ""): any => {
-  const flattened: any = {};
+interface FlattenedObject {
+  [key: string]: string | number | boolean | null;
+}
+
+const flattenObject = (obj: Record<string, unknown>, prefix = ""): FlattenedObject => {
+  const flattened: FlattenedObject = {};
   for (const key in obj) {
     const value = obj[key];
     const newKey = prefix ? `${prefix}.${key}` : key;
     if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      Object.assign(flattened, flattenObject(value, newKey));
+      const nestedObj = value as Record<string, unknown>;
+      Object.assign(flattened, flattenObject(nestedObj, newKey));
     } else if (Array.isArray(value)) {
       flattened[newKey] = JSON.stringify(value);
-    } else {
+    } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
       flattened[newKey] = value;
+    } else {
+      flattened[newKey] = String(value);
     }
   }
   return flattened;
@@ -83,7 +85,7 @@ const flattenObject = (obj: any, prefix = ""): any => {
 const jsonToCSV = (jsonText: string): string => {
   try {
     const parsed = JSON.parse(jsonText);
-    let data: any[] = [];
+    let data: Record<string, unknown>[] = [];
 
     // Handle different JSON structures
     if (Array.isArray(parsed)) {

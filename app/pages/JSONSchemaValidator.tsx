@@ -307,7 +307,7 @@ const JSONSchemaValidator = () => {
         title: "Saved",
         description: "Validation result saved successfully.",
       });
-    } catch (err) {
+    } catch {
       toast({
         title: "Save failed",
         description: "Failed to save validation result.",

@@ -1,6 +1,6 @@
 "use client";
 
-import { Code, FileCode, Shield, Zap, GitCompare } from "lucide-react";
+import { FileCode, Shield, Zap, GitCompare } from "lucide-react";
 
 export const JSONDiffInfoSections = () => {
   return (

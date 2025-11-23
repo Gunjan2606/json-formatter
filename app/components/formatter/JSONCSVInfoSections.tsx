@@ -1,6 +1,6 @@
 "use client";
 
-import { Code, FileCode, Shield, Zap, ArrowLeftRight } from "lucide-react";
+import { FileCode, Shield, Zap, ArrowLeftRight } from "lucide-react";
 
 export const JSONCSVInfoSections = () => {
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { Code, FileCode, Shield, Zap, Table } from "lucide-react";
+import { FileCode, Shield, Zap, Table } from "lucide-react";
 
 export const CSVInfoSections = () => {
   return (
