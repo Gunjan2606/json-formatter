@@ -114,7 +114,7 @@ export const Footer = ({ isFullscreen }: FooterProps) => {
                 </a>
               </li>
               <li>
-                <a href="#" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
+                <a href="/base64-encoder" className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">
                   Base64 Encoder/Decoder
                   <ExternalLink className="w-3 h-3" />
                 </a>
