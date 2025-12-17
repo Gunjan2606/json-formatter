@@ -23,3 +23,7 @@ export const metadata: Metadata = {
     canonical: 'https://jsonformatter.gg/json-diff',
   },
 };
+
+export default function JSONDiffPage() {
+  return <JSONDiffTool />;
+};

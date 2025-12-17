@@ -23,3 +23,6 @@ export const metadata: Metadata = {
     canonical: 'https://jsonformatter.gg/yaml-formatter',
   },
 };
+export default function YAMLFormatterPage() {
+  return <YAMLFormatter />;
+};

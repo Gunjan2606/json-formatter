@@ -23,3 +23,6 @@ export const metadata: Metadata = {
     canonical: 'https://jsonformatter.gg/xml-formatter',
   },
 };
+export default function XMLFormatterPage() {
+  return <XMLFormatter />;
+};

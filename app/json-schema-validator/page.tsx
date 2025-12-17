@@ -23,3 +23,6 @@ export const metadata: Metadata = {
     canonical: 'https://jsonformatter.gg/json-schema-validator',
   },
 };
+export default function JSONSchemaValidatorPage() {
+  return <JSONSchemaValidator />;
+};

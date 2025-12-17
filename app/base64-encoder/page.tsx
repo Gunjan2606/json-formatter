@@ -23,3 +23,7 @@ export const metadata: Metadata = {
     canonical: 'https://jsonformatter.gg/base64-encoder',
   },
 };
+
+export default function Base64EncoderPage() {
+  return <Base64Formatter />;
+}
