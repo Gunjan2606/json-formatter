@@ -1,6 +1,11 @@
+import { Suspense } from "react";
 import Index from "./pages/Index";
 
 export default function Home() {
-  return <Index />;
+  return (
+    <Suspense fallback={null}>
+      <Index />
+    </Suspense>
+  );
 }
 
