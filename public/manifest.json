@@ -1,0 +1,26 @@
+{
+  "name": "JSON Formatter, Validator, Viewer, Editor & Beautifier",
+  "short_name": "JSON Formatter",
+  "description": "Free online JSON Formatter, Validator, Viewer, Editor & Beautifier. Format, validate, beautify, minify, and repair JSON data instantly.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["developer", "utilities", "productivity"],
+  "lang": "en-US",
+  "dir": "ltr",
+  "scope": "/",
+  "prefer_related_applications": false
+}
+
+
+

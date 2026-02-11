@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@irys/sdk": "^0.2.11",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-toast": "^1.2.15",

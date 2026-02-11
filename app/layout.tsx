@@ -18,20 +18,21 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   // Default title (overridden by page-specific titles)
   title: {
-    default: "jsonformatter.gg – Free Online JSON Formatter & Tools",
-    template: "%s | jsonformatter.gg", // Page-specific titles will append this
+    default: "JSON Formatter – Free Online Formatter & Tools",
+    template: "%s | JSON Formatter", // Page-specific titles will append this
   },
   description:
-    "Free online JSON formatter, validator, beautifier, minifier, and converter tools. Secure, fast, 100% client-side processing – no data leaves your browser.",
-  
+    "Free online JSON formatter and validator. Format, validate, beautify, minify, and repair JSON instantly in your browser – no signup, no data logging.",
+  metadataBase: new URL("https://jsonformatter.gg"),
+
   // Authors
-  authors: [{ name: "jsonformatter.gg" }],
+  authors: [{ name: "JSON Formatter" }],
 
   // Open Graph (good defaults for homepage & fallback)
   openGraph: {
-    title: "jsonformatter.gg – Free JSON Formatter & Validator Tools",
+    title: "JSON Formatter – Free JSON Formatter & Validator Tools",
     description:
-      "Powerful, privacy-first online tools for JSON: format, validate, beautify, minify, convert to CSV, validate schema, and more.",
+      "Fast, privacy-first JSON tools to format, validate, beautify, minify, convert to CSV, validate schema, and more.",
     url: "https://jsonformatter.gg",
     siteName: "jsonformatter.gg",
     type: "website",
@@ -49,7 +50,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     site: "@json__gg", // your actual handle
-    title: "jsonformatter.gg – Free JSON Formatter & Tools",
+    title: "JSON Formatter – Free Online JSON Tools",
     description:
       "Fast, secure, client-side JSON tools: formatter, validator, converter, schema validator, and more.",
     images: ["/og-image/default.png"],
@@ -88,17 +89,44 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const websiteJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "JSON Formatter",
+    url: "https://jsonformatter.gg",
+    description:
+      "Free online JSON formatter and validator. Format, validate, beautify, minify, and repair JSON instantly in your browser.",
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: "https://jsonformatter.gg/?q={search_term_string}",
+      },
+      "query-input": "required name=search_term_string",
+    },
+  };
+
   return (
     <html lang="en">
       <head>
-        {/* Favicon & icons – add your actual paths */}
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="icon" href="/icon.png" type="image/png" sizes="32x32" />
-        <link rel="apple-touch-icon" href="/apple-icon.png" sizes="180x180" />
+        {/* Favicon & PWA icons */}
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/icon.svg" />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="application-name" content="jsonformatter.gg" />
+        <meta
+          name="apple-mobile-web-app-title"
+          content="jsonformatter.gg"
+        />
         {/* Viewport for mobile */}
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         {/* Theme color (optional) */}
         <meta name="theme-color" content="#ffffff" />
+        {/* Structured data */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+        />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}

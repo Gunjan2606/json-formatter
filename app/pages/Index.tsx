@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { Button } from "../components/ui/button";
 
 // Polyfill Buffer for browser environment (Monaco Editor compatibility)
@@ -31,6 +32,7 @@ import {
   Wand2,
   Type,
   Link as LinkIcon,
+  Share2,
 } from "lucide-react";
 import { jsonrepair } from "jsonrepair";
 import { useToast } from "../hooks/use-toast";
@@ -92,6 +94,7 @@ const unwrapStringifiedJSON = (obj: any): any => {
   return obj;
 };
 const Index = () => {
+  const searchParams = useSearchParams();
   const [input, setInput] = useState(
     '{\n  "name": "JSON Formatter",\n  "version": "1.0.0",\n  "features": ["Fast", "Beautiful", "Powerful"]\n}'
   );
@@ -135,6 +138,10 @@ const Index = () => {
   const [showUrlDialog, setShowUrlDialog] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [isLoadingUrl, setIsLoadingUrl] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [hasLoadedFromReceipt, setHasLoadedFromReceipt] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   // Load autoFix and fontSize settings from localStorage on mount
   useEffect(() => {
@@ -497,6 +504,86 @@ const Index = () => {
     }
     // Downloaded - no toast needed
   }, [output, input, largeOutputData, largeInputData, showLargeFileModal]);
+
+  const handleShare = useCallback(async () => {
+    const dataToShare = largeOutputData || output;
+
+    if (!dataToShare || dataToShare.trim().length === 0) {
+      toast({
+        title: "Nothing to share",
+        description: "Please format JSON first before sharing.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const byteSize = new Blob([dataToShare]).size;
+    const MAX_BYTES = 100 * 1024; // 100KB free tier limit
+
+    if (byteSize > MAX_BYTES) {
+      toast({
+        title: "Too large to share",
+        description:
+          "Sharing is limited to 100KB. Please reduce the JSON size before sharing.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSharing(true);
+      const response = await fetch("/api/share", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ data: dataToShare }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        const message =
+          errorBody?.error ||
+          `Failed to share JSON (status ${response.status})`;
+        throw new Error(message);
+      }
+
+      const result = await response.json();
+      const receiptId: string | undefined = result?.receiptId;
+
+      if (!receiptId) {
+        throw new Error("Missing receipt ID from share response.");
+      }
+
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "https://jsonformatter.gg";
+      const url = `${origin}/?receipt=${receiptId}`;
+
+      setShareUrl(url);
+      setShowShareDialog(true);
+
+      // Best-effort copy to clipboard, but the main UX is the modal
+      if (navigator.clipboard && url) {
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch {
+          // Ignore clipboard errors
+        }
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unexpected error while sharing JSON.";
+      toast({
+        title: "Share failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSharing(false);
+    }
+  }, [largeOutputData, output, toast]);
 
   const saveToLocalStorage = useCallback(async () => {
     const dataToSave = largeOutputData || output;
@@ -1046,6 +1133,76 @@ const Index = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortKeys]);
 
+  // Load JSON from Irys receipt if present in URL
+  useEffect(() => {
+    const loadFromReceipt = async () => {
+      if (hasLoadedFromReceipt) return;
+
+      const receiptId = searchParams.get("receipt");
+      if (!receiptId) return;
+
+      try {
+        setIsProcessing(true);
+        setError(null);
+
+        const response = await fetch(
+          `https://gateway.irys.xyz/${encodeURIComponent(receiptId)}`
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to load shared JSON (status ${response.status})`
+          );
+        }
+
+        const text = await response.text();
+        if (!text.trim()) {
+          throw new Error("Shared JSON is empty.");
+        }
+
+        setInput(text);
+        setLargeInputData(null);
+        largeInputDataRef.current = null;
+
+        setActiveMode("format");
+        // Format the loaded JSON (best effort)
+        formatJSON(false, text);
+
+        toast({
+          title: "Shared JSON loaded",
+          description: "We loaded the JSON from the share link.",
+        });
+        setHasLoadedFromReceipt(true);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unexpected error while loading shared JSON.";
+        setError({ message });
+        toast({
+          title: "Failed to load share",
+          description: message,
+          variant: "destructive",
+        });
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+
+    // Only run in the browser
+    if (typeof window !== "undefined") {
+      void loadFromReceipt();
+    }
+  }, [
+    searchParams,
+    hasLoadedFromReceipt,
+    formatJSON,
+    toast,
+    setError,
+    setInput,
+    setActiveMode,
+  ]);
+
   // Close text size menu when clicking outside
   useEffect(() => {
     if (!showTextSizeMenu) return;
@@ -1145,6 +1302,58 @@ const Index = () => {
 
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
+
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: "What is a JSON formatter and why do I need it?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text:
+            "A JSON formatter reformats raw JSON into clean, readable, properly indented structure so you can debug, validate, and share data more easily. It helps you quickly spot errors, understand nested objects and arrays, and prepare JSON for APIs, configs, or logs.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Is my JSON data secure? Where is it stored?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text:
+            "All JSON processing happens locally in your browser using client-side code only. We do not send your data to any server or store it on our side, so you can safely format and validate sensitive payloads.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "How do I format and validate JSON online?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text:
+            "Paste or upload your JSON into the input editor and click Format to beautify it or Minify to compress it. The tool will validate syntax in real time and highlight any errors with line and column numbers.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Does this tool support large JSON files? What is the limit?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text:
+            "Yes, the formatter is optimized for large payloads and can handle JSON files around 30MB directly in the browser by using streaming and worker-based processing so your tab stays responsive.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "How do I fix JSON syntax errors?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text:
+            "When invalid JSON is detected, the editor shows an error message with the exact position. You can either fix it manually using the highlighted line or enable Auto-Fix to automatically repair common issues like missing commas, unclosed brackets, and quote problems.",
+        },
+      },
+    ],
+  };
 
   return (
     <div className={`${isFullscreen ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-background text-foreground flex flex-col`}>
@@ -1571,6 +1780,24 @@ const Index = () => {
                 />
               </Button>
               <Button
+                onClick={handleShare}
+                size="icon"
+                variant="ghost"
+                className={`transition-all duration-200 hover:bg-primary hover:text-black active:scale-95 ${
+                  isFullscreen ? "h-6 w-6" : "h-7 w-7"
+                }`}
+                disabled={!output || isSharing}
+                title={
+                  isSharing
+                    ? "Creating share link..."
+                    : "Share this JSON with a link"
+                }
+              >
+                <Share2
+                  className={`${isFullscreen ? "w-3 h-3" : "w-3.5 h-3.5"}`}
+                />
+              </Button>
+              <Button
                 onClick={copyToClipboard}
                 size="icon"
                 variant="ghost"
@@ -1807,6 +2034,62 @@ const Index = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Share Link Dialog */}
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent onClose={() => setShowShareDialog(false)}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Share2 className="w-5 h-5 text-primary" />
+              Share This JSON
+            </DialogTitle>
+            <DialogDescription className="pt-4 text-base">
+              Share a live, read‑only snapshot of your current JSON.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-3">
+            <label className="text-sm font-medium mb-1 block">
+              Share URL
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                readOnly
+                value={shareUrl ?? ""}
+                className="flex-1 px-3 py-2 bg-background border border-border rounded-md text-xs sm:text-sm truncate"
+              />
+              <Button
+                type="button"
+                onClick={async () => {
+                  if (!shareUrl) return;
+                  try {
+                    await navigator.clipboard.writeText(shareUrl);
+                    toast({
+                      title: "Copied",
+                      description: "Share link copied to clipboard.",
+                    });
+                  } catch {
+                    toast({
+                      title: "Copy failed",
+                      description:
+                        "Unable to copy automatically. Please copy the URL manually.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                className="sm:w-auto w-full"
+              >
+                <Copy className="w-4 h-4 mr-2" />
+                Copy
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
     </div>
   );
 };
