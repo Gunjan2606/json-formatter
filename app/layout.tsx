@@ -107,7 +107,7 @@ export default function RootLayout({
   };
 
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <head>
         {/* Favicon & PWA icons */}
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
