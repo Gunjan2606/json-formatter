@@ -16,13 +16,16 @@ export interface CompressedImage {
   savingsPercent: number;
   status: "pending" | "compressing" | "completed" | "error";
   error?: string;
+  originalDimensions: { width: number; height: number } | null;
+  compressedDimensions: { width: number; height: number } | null;
 }
 
 export interface CompressionSettings {
-  quality: number; // 0-100
-  maxWidthOrHeight: number; // 0 = no limit
+  quality: number;
+  maxWidthOrHeight: number;
   preserveExif: boolean;
   format: "original" | "jpeg" | "png" | "webp";
+  autoCompress: boolean;
 }
 
 const DEFAULT_SETTINGS: CompressionSettings = {
@@ -30,14 +33,24 @@ const DEFAULT_SETTINGS: CompressionSettings = {
   maxWidthOrHeight: 0,
   preserveExif: false,
   format: "original",
+  autoCompress: false,
 };
+
+function readImageDimensions(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => resolve({ width: 0, height: 0 });
+    img.src = src;
+  });
+}
 
 export function useImageCompressor() {
   const [images, setImages] = useState<CompressedImage[]>([]);
   const [settings, setSettings] = useState<CompressionSettings>(DEFAULT_SETTINGS);
   const [isCompressing, setIsCompressing] = useState(false);
 
-  const addImages = useCallback((files: File[]) => {
+  const addImages = useCallback((files: File[]): string[] => {
     const newImages: CompressedImage[] = files.map((file) => ({
       id: `${Date.now()}-${Math.random()}`,
       original: file,
@@ -49,15 +62,18 @@ export function useImageCompressor() {
       savings: 0,
       savingsPercent: 0,
       status: "pending" as const,
+      originalDimensions: null,
+      compressedDimensions: null,
     }));
 
-    // Generate preview URLs
     newImages.forEach((img) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
+        const dataUrl = e.target?.result as string;
+        const dims = await readImageDimensions(dataUrl);
         setImages((prev) =>
           prev.map((i) =>
-            i.id === img.id ? { ...i, originalPreview: e.target?.result as string } : i
+            i.id === img.id ? { ...i, originalPreview: dataUrl, originalDimensions: dims } : i
           )
         );
       };
@@ -65,6 +81,7 @@ export function useImageCompressor() {
     });
 
     setImages((prev) => [...prev, ...newImages]);
+    return newImages.map((img) => img.id);
   }, []);
 
   const compressImages = useCallback(
@@ -72,7 +89,7 @@ export function useImageCompressor() {
       setIsCompressing(true);
 
       const imagesToCompress = imageIds
-        ? images.filter((img) => imageIds.includes(img.id))
+        ? images.filter((img) => imageIds.includes(img.id) && img.status === "pending")
         : images.filter((img) => img.status === "pending");
 
       for (const image of imagesToCompress) {
@@ -101,7 +118,6 @@ export function useImageCompressor() {
             options.maxWidthOrHeight = settings.maxWidthOrHeight;
           }
 
-          // Determine output format
           if (settings.format !== "original") {
             options.fileType = `image/${settings.format}`;
           }
@@ -111,9 +127,10 @@ export function useImageCompressor() {
           const savings = image.originalSize - compressedSize;
           const savingsPercent = (savings / image.originalSize) * 100;
 
-          // Generate compressed preview
           const reader = new FileReader();
-          reader.onload = (e) => {
+          reader.onload = async (e) => {
+            const dataUrl = e.target?.result as string;
+            const dims = await readImageDimensions(dataUrl);
             setImages((prev) =>
               prev.map((img) =>
                 img.id === image.id
@@ -123,7 +140,8 @@ export function useImageCompressor() {
                       compressedSize,
                       savings,
                       savingsPercent,
-                      compressedPreview: e.target?.result as string,
+                      compressedPreview: dataUrl,
+                      compressedDimensions: dims,
                       status: "completed" as const,
                     }
                   : img
@@ -151,26 +169,31 @@ export function useImageCompressor() {
     [images, settings]
   );
 
-  const downloadImage = useCallback((image: CompressedImage) => {
-    if (!image.compressed) return;
+  const downloadImage = useCallback(
+    (image: CompressedImage) => {
+      if (!image.compressed) return;
 
-    const url = URL.createObjectURL(image.compressed);
-    const link = document.createElement("a");
-    link.href = url;
+      const url = URL.createObjectURL(image.compressed);
+      const link = document.createElement("a");
+      link.href = url;
 
-    // Determine file extension
-    const ext = settings.format === "original"
-      ? image.original.name.split(".").pop()
-      : settings.format;
+      const ext =
+        settings.format === "original"
+          ? image.original.name.split(".").pop()
+          : settings.format;
 
-    const baseName = image.original.name.replace(/\.[^/.]+$/, "");
-    link.download = `${baseName}-compressed.${ext}`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, [settings.format]);
+      const baseName = image.original.name.replace(/\.[^/.]+$/, "");
+      link.download = `${baseName}-compressed.${ext}`;
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+    [settings.format]
+  );
 
   const downloadAll = useCallback(async () => {
-    const completedImages = images.filter((img) => img.status === "completed" && img.compressed);
+    const completedImages = images.filter(
+      (img) => img.status === "completed" && img.compressed
+    );
 
     if (completedImages.length === 0) return;
 
@@ -179,14 +202,14 @@ export function useImageCompressor() {
       return;
     }
 
-    // Create ZIP file
     const zip = new JSZip();
 
     completedImages.forEach((image) => {
       if (image.compressed) {
-        const ext = settings.format === "original"
-          ? image.original.name.split(".").pop()
-          : settings.format;
+        const ext =
+          settings.format === "original"
+            ? image.original.name.split(".").pop()
+            : settings.format;
 
         const baseName = image.original.name.replace(/\.[^/.]+$/, "");
         zip.file(`${baseName}-compressed.${ext}`, image.compressed);

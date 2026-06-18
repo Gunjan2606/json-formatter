@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Header } from "../components/formatter/Header";
 import { Footer } from "../components/formatter/Footer";
@@ -18,16 +18,14 @@ import {
   ZoomIn,
   Maximize2,
   Minimize2,
+  RefreshCw,
 } from "lucide-react";
 
 const ImageCompressorComponent = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [previewImage, setPreviewImage] = useState<{
-    original: string;
-    compressed: string;
-    name: string;
-  } | null>(null);
+  const [previewImage, setPreviewImage] = useState<CompressedImage | null>(null);
+  const [sliderPos, setSliderPos] = useState(50);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -45,17 +43,21 @@ const ImageCompressorComponent = () => {
     resetSettings,
   } = useImageCompressor();
 
+  // Auto-compress when new images are added
+  const prevCountRef = useRef(0);
+  useEffect(() => {
+    if (settings.autoCompress && images.length > prevCountRef.current && !isCompressing) {
+      compressImages();
+    }
+    prevCountRef.current = images.length;
+  }, [images.length, settings.autoCompress, isCompressing, compressImages]);
+
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files || []);
       const imageFiles = files.filter((file) => file.type.startsWith("image/"));
-      if (imageFiles.length > 0) {
-        addImages(imageFiles);
-      }
-      // Reset input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      if (imageFiles.length > 0) addImages(imageFiles);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     },
     [addImages]
   );
@@ -65,9 +67,7 @@ const ImageCompressorComponent = () => {
       e.preventDefault();
       const files = Array.from(e.dataTransfer.files);
       const imageFiles = files.filter((file) => file.type.startsWith("image/"));
-      if (imageFiles.length > 0) {
-        addImages(imageFiles);
-      }
+      if (imageFiles.length > 0) addImages(imageFiles);
     },
     [addImages]
   );
@@ -75,6 +75,23 @@ const ImageCompressorComponent = () => {
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
   }, []);
+
+  const handlePaste = useCallback(
+    (e: ClipboardEvent) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageFiles = items
+        .filter((item) => item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter(Boolean) as File[];
+      if (imageFiles.length > 0) addImages(imageFiles);
+    },
+    [addImages]
+  );
+
+  useEffect(() => {
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [handlePaste]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -109,7 +126,9 @@ const ImageCompressorComponent = () => {
         icon={<ImageIcon className="w-4 h-4 text-primary-foreground" />}
       />
 
-      <main className={`flex-1 flex flex-col ${isFullscreen ? "p-2" : "p-4"} gap-4 w-full max-w-7xl mx-auto`}>
+      <main
+        className={`flex-1 flex flex-col ${isFullscreen ? "p-2" : "p-4"} gap-4 w-full max-w-7xl mx-auto`}
+      >
         {/* Controls */}
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -173,12 +192,7 @@ const ImageCompressorComponent = () => {
           </Button>
 
           {images.length > 0 && (
-            <Button
-              onClick={clearAll}
-              variant="ghost"
-              size="sm"
-              className="gap-1.5"
-            >
+            <Button onClick={clearAll} variant="ghost" size="sm" className="gap-1.5">
               <Trash2 className="w-3.5 h-3.5" />
               Clear All
             </Button>
@@ -202,32 +216,33 @@ const ImageCompressorComponent = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Quality */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Quality: {settings.quality}%
-                </label>
+                <label className="text-sm font-medium">Quality: {settings.quality}%</label>
                 <input
                   type="range"
                   min="1"
                   max="100"
                   value={settings.quality}
                   onChange={(e) => updateSettings({ quality: parseInt(e.target.value) })}
-                  className="w-full"
+                  className="w-full accent-primary"
                 />
                 <p className="text-xs text-muted-foreground">
                   Higher = better quality, larger file size
                 </p>
               </div>
 
-              {/* Max Dimension */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">
-                  Max Dimension: {settings.maxWidthOrHeight === 0 ? "Original" : `${settings.maxWidthOrHeight}px`}
+                  Max Dimension:{" "}
+                  {settings.maxWidthOrHeight === 0
+                    ? "Original"
+                    : `${settings.maxWidthOrHeight}px`}
                 </label>
                 <select
                   value={settings.maxWidthOrHeight}
-                  onChange={(e) => updateSettings({ maxWidthOrHeight: parseInt(e.target.value) })}
+                  onChange={(e) =>
+                    updateSettings({ maxWidthOrHeight: parseInt(e.target.value) })
+                  }
                   className="w-full bg-background border border-border rounded px-3 py-2 text-sm"
                 >
                   <option value="0">Keep Original</option>
@@ -238,12 +253,15 @@ const ImageCompressorComponent = () => {
                 </select>
               </div>
 
-              {/* Output Format */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Output Format</label>
                 <select
                   value={settings.format}
-                  onChange={(e) => updateSettings({ format: e.target.value as "original" | "jpeg" | "png" | "webp" })}
+                  onChange={(e) =>
+                    updateSettings({
+                      format: e.target.value as "original" | "jpeg" | "png" | "webp",
+                    })
+                  }
                   className="w-full bg-background border border-border rounded px-3 py-2 text-sm"
                 >
                   <option value="original">Keep Original</option>
@@ -253,9 +271,8 @@ const ImageCompressorComponent = () => {
                 </select>
               </div>
 
-              {/* Preserve EXIF */}
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-medium">
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                   <input
                     type="checkbox"
                     checked={settings.preserveExif}
@@ -264,9 +281,15 @@ const ImageCompressorComponent = () => {
                   />
                   Preserve EXIF Metadata
                 </label>
-                <p className="text-xs text-muted-foreground">
-                  Keep camera settings, location, and other metadata
-                </p>
+                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.autoCompress}
+                    onChange={(e) => updateSettings({ autoCompress: e.target.checked })}
+                    className="rounded"
+                  />
+                  Auto-compress on upload
+                </label>
               </div>
             </div>
           </div>
@@ -288,13 +311,14 @@ const ImageCompressorComponent = () => {
               <p className="text-lg font-bold">{formatBytes(stats.totalOriginalSize)}</p>
             </div>
             <div className="bg-card border border-border rounded-lg p-3">
-              <p className="text-xs text-muted-foreground">Saved</p>
+              <p className="text-xs text-muted-foreground">Total Saved</p>
               <p className="text-lg font-bold text-emerald-500">
-                {formatBytes(stats.totalSavings)} (
-                {stats.totalOriginalSize > 0
-                  ? ((stats.totalSavings / stats.totalOriginalSize) * 100).toFixed(1)
-                  : 0}
-                %)
+                {formatBytes(stats.totalSavings)}{" "}
+                {stats.totalOriginalSize > 0 && (
+                  <span className="text-sm">
+                    ({((stats.totalSavings / stats.totalOriginalSize) * 100).toFixed(1)}%)
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -311,7 +335,9 @@ const ImageCompressorComponent = () => {
             <div className="text-center space-y-4">
               <ImageIcon className="w-16 h-16 mx-auto text-muted-foreground" />
               <div>
-                <p className="text-lg font-semibold">Drop images here or click to upload</p>
+                <p className="text-lg font-semibold">
+                  Drop images here, click to upload, or paste from clipboard
+                </p>
                 <p className="text-sm text-muted-foreground mt-2">
                   Supports PNG, JPG, WebP, GIF, AVIF, SVG • No file size limits • 100% private
                 </p>
@@ -329,57 +355,139 @@ const ImageCompressorComponent = () => {
                 image={image}
                 onDownload={() => downloadImage(image)}
                 onRemove={() => removeImage(image.id)}
+                onCompress={() => compressImages([image.id])}
                 onPreview={() => {
                   if (image.status === "completed") {
-                    setPreviewImage({
-                      original: image.originalPreview,
-                      compressed: image.compressedPreview,
-                      name: image.original.name,
-                    });
+                    setSliderPos(50);
+                    setPreviewImage(image);
                   }
                 }}
                 formatBytes={formatBytes}
+                isCompressing={isCompressing}
               />
             ))}
           </div>
         )}
       </main>
 
-      {/* Preview Modal */}
+      {/* Before/After Preview Modal */}
       {previewImage && (
         <div
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => setPreviewImage(null)}
         >
           <div
-            className="bg-card rounded-lg max-w-6xl w-full max-h-[90vh] overflow-auto"
+            className="bg-card rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-4 border-b border-border flex items-center justify-between">
-              <h3 className="font-semibold">{previewImage.name}</h3>
+              <div>
+                <h3 className="font-semibold">{previewImage.original.name}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Drag the slider to compare original vs compressed
+                </p>
+              </div>
               <Button variant="ghost" size="icon" onClick={() => setPreviewImage(null)}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
-            <div className="grid grid-cols-2 gap-4 p-4">
-              <div>
-                <p className="text-sm font-medium mb-2 text-center">Original</p>
+
+            {/* Slider comparison */}
+            <div className="p-4 space-y-4">
+              <div
+                className="relative overflow-hidden rounded border border-border select-none"
+                style={{ userSelect: "none" }}
+              >
+                {/* Compressed (full width, behind) */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={previewImage.original}
-                  alt="Original"
-                  className="w-full h-auto rounded border border-border"
-                />
-              </div>
-              <div>
-                <p className="text-sm font-medium mb-2 text-center">Compressed</p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={previewImage.compressed}
+                  src={previewImage.compressedPreview}
                   alt="Compressed"
-                  className="w-full h-auto rounded border border-border"
+                  className="w-full h-auto block"
+                  draggable={false}
+                />
+
+                {/* Original (clipped to left portion) */}
+                <div
+                  className="absolute inset-0 overflow-hidden"
+                  style={{ width: `${sliderPos}%` }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewImage.originalPreview}
+                    alt="Original"
+                    className="w-full h-auto block"
+                    style={{ minWidth: `${10000 / sliderPos}%` }}
+                    draggable={false}
+                  />
+                </div>
+
+                {/* Divider line */}
+                <div
+                  className="absolute inset-y-0 w-0.5 bg-white shadow-[0_0_4px_rgba(0,0,0,0.8)]"
+                  style={{ left: `${sliderPos}%` }}
+                />
+
+                {/* Labels */}
+                <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded pointer-events-none">
+                  Original
+                </div>
+                <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded pointer-events-none">
+                  Compressed
+                </div>
+
+                {/* Slider handle */}
+                <div
+                  className="absolute inset-y-0 flex items-center"
+                  style={{ left: `${sliderPos}%`, transform: "translateX(-50%)" }}
+                >
+                  <div className="w-8 h-8 rounded-full bg-white shadow-lg border-2 border-gray-300 flex items-center justify-center cursor-ew-resize">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M4 7H1M1 7L3 5M1 7L3 9M10 7H13M13 7L11 5M13 7L11 9" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Invisible range input for dragging */}
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={sliderPos}
+                  onChange={(e) => setSliderPos(Number(e.target.value))}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize"
                 />
               </div>
+
+              {/* Stats row */}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="bg-muted/40 rounded p-3 space-y-1">
+                  <p className="font-medium text-muted-foreground">Original</p>
+                  <p className="font-bold">{formatBytes(previewImage.originalSize)}</p>
+                  {previewImage.originalDimensions && (
+                    <p className="text-xs text-muted-foreground">
+                      {previewImage.originalDimensions.width} × {previewImage.originalDimensions.height}px
+                    </p>
+                  )}
+                </div>
+                <div className="bg-emerald-500/10 rounded p-3 space-y-1">
+                  <p className="font-medium text-emerald-600">Compressed</p>
+                  <p className="font-bold text-emerald-500">{formatBytes(previewImage.compressedSize)}</p>
+                  {previewImage.compressedDimensions && (
+                    <p className="text-xs text-muted-foreground">
+                      {previewImage.compressedDimensions.width} × {previewImage.compressedDimensions.height}px
+                    </p>
+                  )}
+                  <p className="text-xs text-emerald-500 font-medium">
+                    −{previewImage.savingsPercent.toFixed(1)}% smaller
+                  </p>
+                </div>
+              </div>
+
+              <Button onClick={() => downloadImage(previewImage)} className="w-full gap-2">
+                <Download className="w-4 h-4" />
+                Download Compressed
+              </Button>
             </div>
           </div>
         </div>
@@ -401,37 +509,59 @@ function ImageCard({
   image,
   onDownload,
   onRemove,
+  onCompress,
   onPreview,
   formatBytes,
+  isCompressing,
 }: {
   image: CompressedImage;
   onDownload: () => void;
   onRemove: () => void;
+  onCompress: () => void;
   onPreview: () => void;
   formatBytes: (bytes: number) => string;
+  isCompressing: boolean;
 }) {
+  const [showCompressed, setShowCompressed] = useState(false);
+  const previewSrc =
+    showCompressed && image.compressedPreview
+      ? image.compressedPreview
+      : image.originalPreview;
+
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
-      {/* Preview */}
+      {/* Thumbnail */}
       <div className="aspect-video relative bg-muted">
-        {image.originalPreview && (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={image.originalPreview}
-              alt={image.original.name}
-              className="w-full h-full object-cover"
-            />
-            {image.status === "completed" && (
+        {previewSrc && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={previewSrc}
+            alt={image.original.name}
+            className="w-full h-full object-cover"
+          />
+        )}
+
+        {/* Top-right actions */}
+        <div className="absolute top-2 right-2 flex gap-1">
+          {image.status === "completed" && (
+            <>
+              <button
+                onClick={() => setShowCompressed((v) => !v)}
+                title={showCompressed ? "Show original" : "Show compressed"}
+                className="bg-black/50 hover:bg-black/70 text-white px-2 py-1 rounded text-[10px] font-medium transition-colors"
+              >
+                {showCompressed ? "Original" : "Compressed"}
+              </button>
               <button
                 onClick={onPreview}
-                className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg transition-colors"
+                className="bg-black/50 hover:bg-black/70 text-white p-1.5 rounded transition-colors"
+                title="Compare"
               >
-                <ZoomIn className="w-4 h-4" />
+                <ZoomIn className="w-3.5 h-3.5" />
               </button>
-            )}
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Info */}
@@ -440,11 +570,15 @@ function ImageCard({
           {image.original.name}
         </p>
 
-        {/* Status */}
         {image.status === "pending" && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <div className="w-2 h-2 rounded-full bg-gray-500" />
+            <div className="w-2 h-2 rounded-full bg-gray-400" />
             Ready to compress
+            {image.originalDimensions && (
+              <span className="ml-auto">
+                {image.originalDimensions.width}×{image.originalDimensions.height}
+              </span>
+            )}
           </div>
         )}
 
@@ -456,19 +590,25 @@ function ImageCard({
         )}
 
         {image.status === "completed" && (
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs text-emerald-500">
-              <Check className="w-3 h-3" />
-              Compressed successfully
-            </div>
+          <div className="space-y-1.5">
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
                 <p className="text-muted-foreground">Original</p>
                 <p className="font-medium">{formatBytes(image.originalSize)}</p>
+                {image.originalDimensions && (
+                  <p className="text-muted-foreground text-[10px]">
+                    {image.originalDimensions.width}×{image.originalDimensions.height}
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-muted-foreground">Compressed</p>
-                <p className="font-medium">{formatBytes(image.compressedSize)}</p>
+                <p className="font-medium text-emerald-500">{formatBytes(image.compressedSize)}</p>
+                {image.compressedDimensions && (
+                  <p className="text-muted-foreground text-[10px]">
+                    {image.compressedDimensions.width}×{image.compressedDimensions.height}
+                  </p>
+                )}
               </div>
             </div>
             <div className="text-xs text-emerald-500 font-medium">
@@ -485,11 +625,35 @@ function ImageCard({
         )}
 
         {/* Actions */}
-        <div className="flex items-center gap-2 pt-2">
+        <div className="flex items-center gap-2 pt-1">
           {image.status === "completed" && (
-            <Button onClick={onDownload} size="sm" variant="outline" className="flex-1">
-              <Download className="w-3 h-3 mr-1" />
+            <Button onClick={onDownload} size="sm" variant="outline" className="flex-1 gap-1">
+              <Download className="w-3 h-3" />
               Download
+            </Button>
+          )}
+          {image.status === "pending" && (
+            <Button
+              onClick={onCompress}
+              size="sm"
+              variant="outline"
+              className="flex-1 gap-1"
+              disabled={isCompressing}
+            >
+              <Check className="w-3 h-3" />
+              Compress
+            </Button>
+          )}
+          {image.status === "error" && (
+            <Button
+              onClick={onCompress}
+              size="sm"
+              variant="outline"
+              className="flex-1 gap-1"
+              disabled={isCompressing}
+            >
+              <RefreshCw className="w-3 h-3" />
+              Retry
             </Button>
           )}
           <Button onClick={onRemove} size="sm" variant="ghost">

@@ -183,41 +183,40 @@ function computeDiff(leftText: string, rightText: string, mode: DiffMode): DiffR
       }
     }
   } else {
-    // Character or word mode
-    changes.forEach((change) => {
-      const lines = change.value.split("\n");
-      lines.forEach((line, idx) => {
-        if (idx < lines.length - 1 || line) {
-          if (change.removed) {
-            left.push({
-              content: line,
-              type: "removed",
-              lineNumber: leftLineNum++,
-            });
-            stats.deletions++;
-          } else if (change.added) {
-            right.push({
-              content: line,
-              type: "added",
-              lineNumber: rightLineNum++,
-            });
-            stats.additions++;
-          } else {
-            left.push({
-              content: line,
-              type: "unchanged",
-              lineNumber: leftLineNum++,
-            });
-            right.push({
-              content: line,
-              type: "unchanged",
-              lineNumber: rightLineNum++,
-            });
-            stats.unchanged++;
-          }
-        }
-      });
-    });
+    // Character or word mode — treat the entire text as one comparable block per side
+    const leftLines = leftText.split("\n");
+    const rightLines = rightText.split("\n");
+
+    // Compute per-line intra-line diffs using char/word diffing
+    const lineCount = Math.max(leftLines.length, rightLines.length);
+    for (let i = 0; i < lineCount; i++) {
+      const lLine = leftLines[i] ?? "";
+      const rLine = rightLines[i] ?? "";
+
+      if (i >= leftLines.length) {
+        // Extra line on the right
+        right.push({ content: rLine, type: "added", lineNumber: rightLineNum++ });
+        left.push({ content: "", type: "unchanged", lineNumber: 0 });
+        stats.additions++;
+      } else if (i >= rightLines.length) {
+        // Extra line on the left
+        left.push({ content: lLine, type: "removed", lineNumber: leftLineNum++ });
+        right.push({ content: "", type: "unchanged", lineNumber: 0 });
+        stats.deletions++;
+      } else if (lLine === rLine) {
+        left.push({ content: lLine, type: "unchanged", lineNumber: leftLineNum++ });
+        right.push({ content: rLine, type: "unchanged", lineNumber: rightLineNum++ });
+        stats.unchanged++;
+        unified.push({ content: lLine, type: "unchanged", oldLineNumber: leftLineNum - 1, newLineNumber: rightLineNum - 1 });
+      } else {
+        const intra = getIntraLineChanges(lLine, rLine);
+        left.push({ content: lLine, type: "modified", lineNumber: leftLineNum++, changes: intra.left });
+        right.push({ content: rLine, type: "modified", lineNumber: rightLineNum++, changes: intra.right });
+        stats.modifications++;
+        unified.push({ content: `- ${lLine}`, type: "removed", oldLineNumber: leftLineNum - 1, newLineNumber: null });
+        unified.push({ content: `+ ${rLine}`, type: "added", oldLineNumber: null, newLineNumber: rightLineNum - 1 });
+      }
+    }
   }
 
   // Balance arrays for side-by-side view

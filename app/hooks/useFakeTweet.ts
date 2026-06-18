@@ -1,6 +1,24 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+
+async function imageUrlToDataUrl(src: string): Promise<string> {
+  if (src.startsWith("data:")) return src;
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth || 100;
+      canvas.height = img.naturalHeight || 100;
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => resolve(src);
+    img.src = src;
+  });
+}
 
 export interface TweetData {
   profileImage: string;
@@ -33,6 +51,15 @@ const defaultTweet: TweetData = {
 export function useFakeTweet() {
   const [tweetData, setTweetData] = useState<TweetData>(defaultTweet);
   const [, setCustomImage] = useState<string | null>(null);
+  const [profileImageDataUrl, setProfileImageDataUrl] = useState<string>(defaultTweet.profileImage);
+
+  useEffect(() => {
+    let cancelled = false;
+    imageUrlToDataUrl(tweetData.profileImage).then((dataUrl) => {
+      if (!cancelled) setProfileImageDataUrl(dataUrl);
+    });
+    return () => { cancelled = true; };
+  }, [tweetData.profileImage]);
 
   const updateTweet = useCallback((updates: Partial<TweetData>) => {
     // Validate tweet text length (Twitter limit is 280 characters)
@@ -128,6 +155,7 @@ export function useFakeTweet() {
 
   return {
     tweetData,
+    profileImageDataUrl,
     updateTweet,
     handleImageUpload,
     generateRandomAvatar,

@@ -11,21 +11,16 @@ import {
   Shuffle,
   RotateCcw,
   Download,
-  CheckCircle,
-  Heart,
-  Repeat2,
-  MessageCircle,
-  BarChart3,
-  Share,
   Clock,
 } from "lucide-react";
 import { useToast } from "../hooks/use-toast";
 import { FakeTweetInfoSections } from "../components/formatter/FakeTweetInfoSections";
-import html2canvas from "html2canvas";
+import { toPng } from "html-to-image";
 
 export default function FakeTweetGenerator() {
   const {
     tweetData,
+    profileImageDataUrl,
     updateTweet,
     handleImageUpload,
     generateRandomAvatar,
@@ -43,31 +38,18 @@ export default function FakeTweetGenerator() {
     if (!tweetRef.current) return;
 
     try {
-      const canvas = await html2canvas(tweetRef.current, {
-        backgroundColor: tweetData.theme === "dark" ? "#000000" : "#ffffff",
-        scale: 2,
-      });
+      // Run twice — first pass loads fonts/images into the SVG cache, second pass renders cleanly
+      await toPng(tweetRef.current, { pixelRatio: 3 });
+      const dataUrl = await toPng(tweetRef.current, { pixelRatio: 3 });
 
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "tweet.png";
-          a.click();
-          URL.revokeObjectURL(url);
-          toast({
-            title: "Downloaded!",
-            description: "Tweet screenshot saved as PNG",
-          });
-        }
-      });
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = "tweet.png";
+      a.click();
+
+      toast({ title: "Downloaded!", description: "Tweet screenshot saved as PNG" });
     } catch {
-      toast({
-        title: "Error",
-        description: "Failed to generate screenshot",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to generate screenshot", variant: "destructive" });
     }
   };
 
@@ -114,22 +96,26 @@ export default function FakeTweetGenerator() {
             >
               {/* Tweet Header */}
               <div className="flex items-start gap-3 mb-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={tweetData.profileImage}
+                  src={profileImageDataUrl || tweetData.profileImage}
                   alt="Profile"
                   className="w-12 h-12 rounded-full"
+                  crossOrigin="anonymous"
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1">
+                  <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                     <span
-                      className={`font-bold truncate ${
+                      className={`font-bold ${
                         tweetData.theme === "dark" ? "text-white" : "text-[rgb(15,20,25)]"
                       }`}
                     >
                       {tweetData.displayName}
                     </span>
                     {tweetData.isVerified && (
-                      <CheckCircle className="w-5 h-5 text-blue-500 fill-blue-500" />
+                      <svg width="20" height="20" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" style={{ display: "block", flexShrink: 0 }}>
+                        <path d="M20.396 11c-.018-.646-.215-1.275-.57-1.816-.354-.54-.852-.972-1.438-1.246.223-.607.27-1.264.14-1.897-.131-.634-.437-1.218-.882-1.687-.47-.445-1.053-.75-1.687-.882-.633-.13-1.29-.083-1.897.14-.273-.587-.704-1.086-1.245-1.44S11.647 1.62 11 1.604c-.646.017-1.273.213-1.813.568s-.969.854-1.24 1.44c-.608-.223-1.267-.272-1.902-.14-.635.13-1.22.436-1.69.882-.445.47-.749 1.055-.878 1.688-.13.633-.08 1.29.144 1.896-.587.274-1.087.705-1.443 1.245-.356.54-.555 1.17-.574 1.817.02.647.218 1.276.574 1.817.356.54.856.972 1.443 1.245-.224.606-.274 1.263-.144 1.896.13.634.433 1.218.877 1.688.47.443 1.054.747 1.687.878.633.132 1.29.084 1.897-.136.274.586.705 1.084 1.246 1.439.54.354 1.17.551 1.816.569.647-.016 1.276-.213 1.817-.567s.972-.854 1.245-1.44c.604.239 1.266.296 1.903.164.636-.132 1.22-.447 1.68-.907.46-.46.776-1.044.908-1.681s.075-1.299-.165-1.903c.586-.274 1.084-.705 1.439-1.246.354-.54.551-1.17.569-1.816zM9.662 14.85l-3.429-3.428 1.293-1.302 2.072 2.072 4.4-4.794 1.347 1.246z" fill="#1d9bf0"/>
+                      </svg>
                     )}
                   </div>
                   <div
@@ -162,71 +148,50 @@ export default function FakeTweetGenerator() {
 
               {/* Action Icons with Stats */}
               <div
-                className={`flex justify-between pt-2 border-t ${
-                  tweetData.theme === "dark" ? "border-[rgb(47,51,54)]" : "border-[rgb(239,243,244)]"
-                }`}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "8px", borderTop: `1px solid ${tweetData.theme === "dark" ? "rgb(47,51,54)" : "rgb(239,243,244)"}` }}
               >
-                <div className="flex items-center gap-1 group cursor-pointer">
-                  <MessageCircle
-                    className={`w-5 h-5 ${
-                      tweetData.theme === "dark" ? "text-[rgb(113,118,123)]" : "text-[rgb(83,100,113)]"
-                    } group-hover:text-blue-500 transition-colors`}
-                  />
-                  <span
-                    className={`text-sm ${
-                      tweetData.theme === "dark" ? "text-[rgb(113,118,123)]" : "text-[rgb(83,100,113)]"
-                    } group-hover:text-blue-500 transition-colors`}
-                  >
+                {/* Reply */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={tweetData.theme === "dark" ? "rgb(113,118,123)" : "rgb(83,100,113)"} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  <span style={{ fontSize: "13px", color: tweetData.theme === "dark" ? "rgb(113,118,123)" : "rgb(83,100,113)", lineHeight: 1 }}>
                     {formatNumber(tweetData.replies)}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 group cursor-pointer">
-                  <Repeat2
-                    className={`w-5 h-5 ${
-                      tweetData.theme === "dark" ? "text-[rgb(113,118,123)]" : "text-[rgb(83,100,113)]"
-                    } group-hover:text-green-500 transition-colors`}
-                  />
-                  <span
-                    className={`text-sm ${
-                      tweetData.theme === "dark" ? "text-[rgb(113,118,123)]" : "text-[rgb(83,100,113)]"
-                    } group-hover:text-green-500 transition-colors`}
-                  >
+                {/* Retweet */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={tweetData.theme === "dark" ? "rgb(113,118,123)" : "rgb(83,100,113)"} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+                    <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                  </svg>
+                  <span style={{ fontSize: "13px", color: tweetData.theme === "dark" ? "rgb(113,118,123)" : "rgb(83,100,113)", lineHeight: 1 }}>
                     {formatNumber(tweetData.retweets)}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 group cursor-pointer">
-                  <Heart
-                    className={`w-5 h-5 ${
-                      tweetData.theme === "dark" ? "text-[rgb(113,118,123)]" : "text-[rgb(83,100,113)]"
-                    } group-hover:text-pink-600 transition-colors`}
-                  />
-                  <span
-                    className={`text-sm ${
-                      tweetData.theme === "dark" ? "text-[rgb(113,118,123)]" : "text-[rgb(83,100,113)]"
-                    } group-hover:text-pink-600 transition-colors`}
-                  >
+                {/* Like */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={tweetData.theme === "dark" ? "rgb(113,118,123)" : "rgb(83,100,113)"} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                  </svg>
+                  <span style={{ fontSize: "13px", color: tweetData.theme === "dark" ? "rgb(113,118,123)" : "rgb(83,100,113)", lineHeight: 1 }}>
                     {formatNumber(tweetData.likes)}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 group cursor-pointer">
-                  <BarChart3
-                    className={`w-5 h-5 ${
-                      tweetData.theme === "dark" ? "text-[rgb(113,118,123)]" : "text-[rgb(83,100,113)]"
-                    } group-hover:text-blue-500 transition-colors`}
-                  />
-                  <span
-                    className={`text-sm ${
-                      tweetData.theme === "dark" ? "text-[rgb(113,118,123)]" : "text-[rgb(83,100,113)]"
-                    } group-hover:text-blue-500 transition-colors`}
-                  >
+                {/* Views */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={tweetData.theme === "dark" ? "rgb(113,118,123)" : "rgb(83,100,113)"} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+                    <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+                  </svg>
+                  <span style={{ fontSize: "13px", color: tweetData.theme === "dark" ? "rgb(113,118,123)" : "rgb(83,100,113)", lineHeight: 1 }}>
                     {formatNumber(tweetData.views)}
                   </span>
                 </div>
-                <Share
-                  className={`w-5 h-5 ${
-                    tweetData.theme === "dark" ? "text-[rgb(113,118,123)]" : "text-[rgb(83,100,113)]"
-                  } hover:text-blue-500 transition-colors cursor-pointer`}
-                />
+                {/* Share */}
+                <div style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={tweetData.theme === "dark" ? "rgb(113,118,123)" : "rgb(83,100,113)"} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
+                  </svg>
+                </div>
               </div>
             </div>
             </div>

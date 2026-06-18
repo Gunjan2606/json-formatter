@@ -9,13 +9,12 @@ import { useQRGenerator, type QRType, type ErrorCorrectionLevel } from "../hooks
 import {
   QrCode,
   Download,
-  Maximize2,
-  Minimize2,
   Upload,
   X,
   AlertCircle,
 } from "lucide-react";
 import QRCodeLib from "qrcode";
+import { jsPDF } from "jspdf";
 
 const QR_TYPES = [
   { value: "url", label: "URL/Link", placeholder: "https://example.com" },
@@ -38,6 +37,7 @@ const QRGenerator = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [qrDataURL, setQRDataURL] = useState<string>("");
   const [logoError, setLogoError] = useState<string>("");
+  const [fileName, setFileName] = useState<string>("qrcode");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -146,15 +146,14 @@ const QRGenerator = () => {
     async (format: "png" | "svg" | "pdf") => {
       if (!qrData) return;
 
+      const baseName = fileName.trim() || "qrcode";
       try {
         if (format === "png") {
-          // Use canvas data URL
           const link = document.createElement("a");
           link.href = qrDataURL;
-          link.download = `qrcode-${Date.now()}.png`;
+          link.download = `${baseName}.png`;
           link.click();
         } else if (format === "svg") {
-          // Generate SVG
           const svg = await QRCodeLib.toString(qrData, {
             type: "svg",
             width: options.size,
@@ -170,16 +169,17 @@ const QRGenerator = () => {
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.href = url;
-          link.download = `qrcode-${Date.now()}.svg`;
+          link.download = `${baseName}.svg`;
           link.click();
           URL.revokeObjectURL(url);
         } else if (format === "pdf") {
-          // For PDF, we'll use canvas to image then embed in a simple PDF-like format
-          // This is a simplified approach - for production, consider using jsPDF
-          const link = document.createElement("a");
-          link.href = qrDataURL;
-          link.download = `qrcode-${Date.now()}.png`;
-          link.click();
+          const pdf = new jsPDF({
+            orientation: "portrait",
+            unit: "px",
+            format: [options.size + 80, options.size + 80],
+          });
+          pdf.addImage(qrDataURL, "PNG", 40, 40, options.size, options.size);
+          pdf.save(`${baseName}.pdf`);
         }
       } catch (error) {
         console.error("Error downloading QR code:", error);
@@ -482,6 +482,16 @@ const QRGenerator = () => {
             {/* Download Buttons */}
             <div className="bg-card border border-border rounded-lg p-4 space-y-2">
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">Download</h3>
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="text"
+                  value={fileName}
+                  onChange={(e) => setFileName(e.target.value)}
+                  placeholder="File name"
+                  className="flex-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">.png / .svg / .pdf</span>
+              </div>
               <Button onClick={() => handleDownload("png")} className="w-full gap-2">
                 <Download className="w-4 h-4" />
                 Download PNG
@@ -489,6 +499,10 @@ const QRGenerator = () => {
               <Button onClick={() => handleDownload("svg")} variant="outline" className="w-full gap-2">
                 <Download className="w-4 h-4" />
                 Download SVG (Vector)
+              </Button>
+              <Button onClick={() => handleDownload("pdf")} variant="outline" className="w-full gap-2">
+                <Download className="w-4 h-4" />
+                Download PDF
               </Button>
             </div>
 
@@ -506,12 +520,6 @@ const QRGenerator = () => {
           </div>
         </div>
 
-        {/* Fullscreen Toggle */}
-        <div className="flex items-center justify-end">
-          <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="h-8 w-8">
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </Button>
-        </div>
       </main>
 
       {/* Info Sections */}

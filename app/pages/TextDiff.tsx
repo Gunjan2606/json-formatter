@@ -137,6 +137,59 @@ const TextDiffComponent = () => {
           </Button>
         </div>
 
+        {/* Input panels — always editable */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-card border border-border rounded-lg flex flex-col">
+            <div className="flex items-center justify-between p-3 border-b border-border">
+              <span className="text-sm font-semibold text-muted-foreground">Original</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => handleCopy(leftText, "left")}
+              >
+                {copiedField === "left" ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </Button>
+            </div>
+            <textarea
+              value={leftText}
+              onChange={(e) => setLeftText(e.target.value)}
+              placeholder="Paste original text here..."
+              className="flex-1 w-full bg-background p-3 font-mono text-sm focus:outline-none resize-none min-h-[180px]"
+              spellCheck={false}
+            />
+          </div>
+
+          <div className="bg-card border border-border rounded-lg flex flex-col">
+            <div className="flex items-center justify-between p-3 border-b border-border">
+              <span className="text-sm font-semibold text-muted-foreground">Modified</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => handleCopy(rightText, "right")}
+              >
+                {copiedField === "right" ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </Button>
+            </div>
+            <textarea
+              value={rightText}
+              onChange={(e) => setRightText(e.target.value)}
+              placeholder="Paste modified text here..."
+              className="flex-1 w-full bg-background p-3 font-mono text-sm focus:outline-none resize-none min-h-[180px]"
+              spellCheck={false}
+            />
+          </div>
+        </div>
+
         {/* Statistics */}
         {diffResult && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -159,122 +212,58 @@ const TextDiffComponent = () => {
           </div>
         )}
 
-        {/* Diff Display */}
-        {viewMode === "split" ? (
-          <div className="grid grid-cols-2 gap-4 flex-1">
-            {/* Left Panel */}
+        {/* Diff output */}
+        {diffResult && viewMode === "split" && (
+          <div className="grid grid-cols-2 gap-4">
             <div className="bg-card border border-border rounded-lg flex flex-col">
-              <div className="flex items-center justify-between p-3 border-b border-border">
-                <span className="text-sm font-semibold text-muted-foreground">Original</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => handleCopy(leftText, "left")}
-                >
-                  {copiedField === "left" ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-500" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </Button>
+              <div className="p-2 border-b border-border">
+                <span className="text-xs font-semibold text-muted-foreground">Original — diff</span>
               </div>
-              {!diffResult ? (
-                <textarea
-                  value={leftText}
-                  onChange={(e) => setLeftText(e.target.value)}
-                  placeholder="Paste original text here..."
-                  className="flex-1 w-full bg-background p-3 font-mono text-sm focus:outline-none resize-none"
-                  spellCheck={false}
-                />
-              ) : (
-                <div className="flex-1 overflow-auto p-2">
-                  {diffResult.left.map((line, i) => (
-                    <DiffLineComponent key={i} line={line} />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Right Panel */}
-            <div className="bg-card border border-border rounded-lg flex flex-col">
-              <div className="flex items-center justify-between p-3 border-b border-border">
-                <span className="text-sm font-semibold text-muted-foreground">Modified</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => handleCopy(rightText, "right")}
-                >
-                  {copiedField === "right" ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-500" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </Button>
-              </div>
-              {!diffResult ? (
-                <textarea
-                  value={rightText}
-                  onChange={(e) => setRightText(e.target.value)}
-                  placeholder="Paste modified text here..."
-                  className="flex-1 w-full bg-background p-3 font-mono text-sm focus:outline-none resize-none"
-                  spellCheck={false}
-                />
-              ) : (
-                <div className="flex-1 overflow-auto p-2">
-                  {diffResult.right.map((line, i) => (
-                    <DiffLineComponent key={i} line={line} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="bg-card border border-border rounded-lg flex flex-col flex-1">
-            <div className="flex items-center justify-between p-3 border-b border-border">
-              <span className="text-sm font-semibold text-muted-foreground">Unified Diff</span>
-            </div>
-            {!diffResult ? (
-              <div className="flex-1 grid grid-cols-2 gap-4 p-3">
-                <textarea
-                  value={leftText}
-                  onChange={(e) => setLeftText(e.target.value)}
-                  placeholder="Paste original text here..."
-                  className="w-full bg-background border border-border rounded p-3 font-mono text-sm focus:outline-none resize-none"
-                  spellCheck={false}
-                />
-                <textarea
-                  value={rightText}
-                  onChange={(e) => setRightText(e.target.value)}
-                  placeholder="Paste modified text here..."
-                  className="w-full bg-background border border-border rounded p-3 font-mono text-sm focus:outline-none resize-none"
-                  spellCheck={false}
-                />
-              </div>
-            ) : (
-              <div className="flex-1 overflow-auto p-2">
-                {diffResult.unified.map((line, i) => (
-                  <div
-                    key={i}
-                    className={`font-mono text-xs leading-relaxed px-2 py-0.5 ${
-                      line.type === "added"
-                        ? "bg-emerald-500/10 text-emerald-500"
-                        : line.type === "removed"
-                        ? "bg-red-500/10 text-red-500"
-                        : ""
-                    }`}
-                  >
-                    <span className="text-muted-foreground mr-4">
-                      {line.type === "added" && "+"}
-                      {line.type === "removed" && "-"}
-                      {line.type === "unchanged" && " "}
-                    </span>
-                    {line.content}
-                  </div>
+              <div className="overflow-auto p-2 max-h-[400px]">
+                {diffResult.left.map((line, i) => (
+                  <DiffLineComponent key={i} line={line} />
                 ))}
               </div>
-            )}
+            </div>
+            <div className="bg-card border border-border rounded-lg flex flex-col">
+              <div className="p-2 border-b border-border">
+                <span className="text-xs font-semibold text-muted-foreground">Modified — diff</span>
+              </div>
+              <div className="overflow-auto p-2 max-h-[400px]">
+                {diffResult.right.map((line, i) => (
+                  <DiffLineComponent key={i} line={line} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {diffResult && viewMode === "unified" && (
+          <div className="bg-card border border-border rounded-lg flex flex-col">
+            <div className="p-2 border-b border-border">
+              <span className="text-xs font-semibold text-muted-foreground">Unified diff</span>
+            </div>
+            <div className="overflow-auto p-2 max-h-[400px]">
+              {diffResult.unified.map((line, i) => (
+                <div
+                  key={i}
+                  className={`font-mono text-xs leading-relaxed px-2 py-0.5 ${
+                    line.type === "added"
+                      ? "bg-emerald-500/10 text-emerald-500"
+                      : line.type === "removed"
+                      ? "bg-red-500/10 text-red-500"
+                      : ""
+                  }`}
+                >
+                  <span className="text-muted-foreground mr-4 select-none">
+                    {line.type === "added" && "+"}
+                    {line.type === "removed" && "-"}
+                    {line.type === "unchanged" && " "}
+                  </span>
+                  {line.content}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </main>
@@ -324,7 +313,7 @@ function DiffLineComponent({ line }: { line: DiffLine }) {
           ))}
         </span>
       ) : (
-        <span className="flex-1">{line.content}</span>
+        <span className="flex-1">{line.content || " "}</span>
       )}
     </div>
   );
