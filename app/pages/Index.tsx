@@ -279,12 +279,6 @@ const Index = () => {
       }
 
       const sizeMB = textToFormat.length / (1024 * 1024);
-      console.log("=== formatJSON called ===");
-      console.log("Size:", sizeMB.toFixed(2) + "MB");
-      console.log("Using override:", textOverride !== undefined);
-      console.log("Using ref:", !!largeInputDataRef.current);
-      console.log("Using largeInputData:", !!largeInputData);
-      console.log("First 100 chars:", textToFormat.substring(0, 100));
 
       if (!textToFormat || textToFormat.trim().length === 0) {
         toast({
@@ -331,35 +325,17 @@ const Index = () => {
               column,
             } = event.data;
 
-            console.log("Worker response:", {
-              success,
-              hasFormatted: !!formatted,
-              error: errorMsg,
-            });
-
             if (success) {
               const outputSizeMB = formatted.length / (1024 * 1024);
               const MONACO_OUTPUT_LIMIT = 30; // Monaco crashes above ~30MB
 
-              console.log(
-                "✅ Format successful, output size:",
-                outputSizeMB.toFixed(2) + "MB"
-              );
-
               if (outputSizeMB < MONACO_OUTPUT_LIMIT) {
-                // Safe to display in Monaco
                 setOutput(formatted);
-                setLargeOutputData(null); // Clear any previous large output
+                setLargeOutputData(null);
                 setIsMinified(minify);
                 setUploadProgress(0);
-                setError(null); // Clear any previous errors
+                setError(null);
               } else {
-                // Output too large - store separately and show modal
-                console.log(
-                  "⚠️  Output too large for editor (" +
-                    outputSizeMB.toFixed(1) +
-                    "MB), storing for download"
-                );
                 setLargeOutputData(formatted); // Store for download
                 setLargeFileSize(outputSizeMB);
                 setOutput(""); // Keep output editor empty
@@ -642,10 +618,8 @@ const Index = () => {
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
     } else {
       document.exitFullscreen();
-      setIsFullscreen(false);
     }
   }, []);
 
@@ -728,10 +702,7 @@ const Index = () => {
       const pasteSizeMB = pasteSizeBytes / (1024 * 1024);
       const PASTE_LIMIT_MB = 30; // Same as Monaco editor limit
 
-      console.log("Paste detected:", pasteSizeMB.toFixed(2) + "MB");
-
       if (pasteSizeMB > PASTE_LIMIT_MB) {
-        console.log("⚠️  Paste blocked - too large");
         e.preventDefault(); // Stop the paste
         e.stopPropagation();
 
@@ -742,7 +713,6 @@ const Index = () => {
       }
     };
 
-    console.log("Paste listener attached to editor");
     textArea.addEventListener("paste", handlePaste, true); // Use capture phase
 
     // Cleanup
@@ -779,27 +749,18 @@ const Index = () => {
       largeInputDataRef.current = null;
 
       try {
-        console.log(
-          "Reading file:",
-          file.name,
-          "Size:",
-          sizeMB.toFixed(2) + "MB"
-        );
         setUploadProgress(30);
         const text = await file.text();
-        console.log("File read successfully, length:", text.length);
         setUploadProgress(50);
 
         const EDITOR_SAFE_LIMIT = 30; // Monaco can handle up to ~30MB
 
         if (sizeMB < EDITOR_SAFE_LIMIT) {
-          // Small files: Load into editor (keep raw)
           setInput(text);
-          setLargeInputData(null); // Clear any previous large data
+          setLargeInputData(null);
           largeInputDataRef.current = null;
           setUploadProgress(60);
 
-          // Auto-fix if enabled - process and put result in output
           if (autoFix) {
             try {
               const fixed = applyAutoFix(text);
@@ -814,47 +775,20 @@ const Index = () => {
                 description: "JSON automatically repaired from uploaded file",
               });
             } catch {
-              // If auto-fix fails, try normal format
-              setTimeout(() => {
-                console.log("Auto-fix failed, trying normal format");
-                formatJSON(activeMode === "minify", text);
-              }, 500);
+              formatJSON(activeMode === "minify", text);
             }
           } else {
-            // No auto-fix - format normally
-            setTimeout(() => {
-              console.log("Starting auto-format in", activeMode, "mode");
-              formatJSON(activeMode === "minify", text);
-            }, 500);
+            formatJSON(activeMode === "minify", text);
           }
         } else {
-          // Large files: DON'T load into editor (will crash Monaco)
-          // Store the actual data and keep editor empty
-          console.log(
-            "⚠️  File too large for editor (" +
-              sizeMB.toFixed(1) +
-              "MB), processing without display"
-          );
-          largeInputDataRef.current = text; // Store immediately in ref for instant access
-          setLargeInputData(text); // Also store in state for downloads
-
-          // Clear input FIRST before any processing
+          largeInputDataRef.current = text;
+          setLargeInputData(text);
           setInput("");
-
-          // Clear the editor content directly
           if (inputEditorRef.current) {
             inputEditorRef.current.setValue("");
           }
-
           setUploadProgress(60);
-          setIsProcessing(false); // Stop processing indicator
-
-          // Format in worker - pass text directly to avoid state timing issues
-          setTimeout(() => {
-            console.log("Processing large file in", activeMode, "mode");
-            setIsProcessing(true);
-            formatJSON(activeMode === "minify", text); // Pass text directly for auto-format
-          }, 300);
+          formatJSON(activeMode === "minify", text);
         }
 
       } catch (err: unknown) {
@@ -891,27 +825,18 @@ const Index = () => {
       largeInputDataRef.current = null;
 
       try {
-        console.log(
-          "Reading file:",
-          file.name,
-          "Size:",
-          sizeMB.toFixed(2) + "MB"
-        );
         setUploadProgress(30);
         const text = await file.text();
-        console.log("File read successfully, length:", text.length);
         setUploadProgress(50);
 
-        const EDITOR_SAFE_LIMIT = 30; // Monaco can handle up to ~30MB
+        const EDITOR_SAFE_LIMIT = 30;
 
         if (sizeMB < EDITOR_SAFE_LIMIT) {
-          // Small files: Load into editor (keep raw)
           setInput(text);
-          setLargeInputData(null); // Clear any previous large data
+          setLargeInputData(null);
           largeInputDataRef.current = null;
           setUploadProgress(60);
 
-          // Auto-fix if enabled - process and put result in output
           if (autoFix) {
             try {
               const fixed = applyAutoFix(text);
@@ -926,47 +851,20 @@ const Index = () => {
                 description: "JSON automatically repaired from uploaded file",
               });
             } catch {
-              // If auto-fix fails, try normal format
-              setTimeout(() => {
-                console.log("Auto-fix failed, trying normal format");
-                formatJSON(activeMode === "minify", text);
-              }, 500);
+              formatJSON(activeMode === "minify", text);
             }
           } else {
-            // No auto-fix - format normally
-            setTimeout(() => {
-              console.log("Starting auto-format in", activeMode, "mode");
-              formatJSON(activeMode === "minify", text);
-            }, 500);
+            formatJSON(activeMode === "minify", text);
           }
         } else {
-          // Large files: DON'T load into editor (will crash Monaco)
-          // Store the actual data and keep editor empty
-          console.log(
-            "⚠️  File too large for editor (" +
-              sizeMB.toFixed(1) +
-              "MB), processing without display"
-          );
-          largeInputDataRef.current = text; // Store immediately in ref for instant access
-          setLargeInputData(text); // Also store in state for downloads
-
-          // Clear input FIRST before any processing
+          largeInputDataRef.current = text;
+          setLargeInputData(text);
           setInput("");
-
-          // Clear the editor content directly
           if (inputEditorRef.current) {
             inputEditorRef.current.setValue("");
           }
-
           setUploadProgress(60);
-          setIsProcessing(false); // Stop processing indicator
-
-          // Format in worker - pass text directly to avoid state timing issues
-          setTimeout(() => {
-            console.log("Processing large file in ", activeMode, "mode");
-            setIsProcessing(true);
-            formatJSON(activeMode === "minify", text); // Pass text directly for auto-format
-          }, 300);
+          formatJSON(activeMode === "minify", text);
         }
 
       } catch (err: unknown) {
@@ -996,7 +894,6 @@ const Index = () => {
     setUploadProgress(10);
 
     try {
-      // Validate URL format
       let url = urlInput.trim();
       if (!url.startsWith("http://") && !url.startsWith("https://")) {
         url = "https://" + url;
@@ -1004,33 +901,21 @@ const Index = () => {
 
       setUploadProgress(30);
 
-      // Fetch data from URL
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-      });
+      // Fetch via server-side proxy to avoid CORS restrictions
+      const proxyResponse = await fetch(
+        `/api/proxy-url?url=${encodeURIComponent(url)}`
+      );
 
       setUploadProgress(60);
 
-      if (!response.ok) {
+      if (!proxyResponse.ok) {
+        const errBody = await proxyResponse.json().catch(() => null);
         throw new Error(
-          `Failed to fetch: ${response.status} ${response.statusText}`
+          errBody?.error || `Failed to fetch: ${proxyResponse.status} ${proxyResponse.statusText}`
         );
       }
 
-      const contentType = response.headers.get("content-type");
-      if (
-        contentType &&
-        !contentType.includes("application/json") &&
-        !contentType.includes("text/plain") &&
-        !contentType.includes("text/json")
-      ) {
-        // Still try to parse as JSON even if content-type doesn't match
-      }
-
-      const text = await response.text();
+      const text = await proxyResponse.text();
       setUploadProgress(80);
 
       if (!text.trim()) {
@@ -1046,7 +931,6 @@ const Index = () => {
         largeInputDataRef.current = null;
         setUploadProgress(100);
 
-        // Auto-fix if enabled
         if (autoFix) {
           try {
             const fixed = applyAutoFix(text);
@@ -1059,30 +943,20 @@ const Index = () => {
               description: "JSON loaded from URL and automatically repaired",
             });
           } catch {
-            setTimeout(() => {
-              formatJSON(activeMode === "minify", text);
-            }, 500);
+            formatJSON(activeMode === "minify", text);
           }
         } else {
-          setTimeout(() => {
-            formatJSON(activeMode === "minify", text);
-          }, 500);
+          formatJSON(activeMode === "minify", text);
         }
       } else {
-        // Large file handling
         largeInputDataRef.current = text;
         setLargeInputData(text);
         setInput("");
-
         if (inputEditorRef.current) {
           inputEditorRef.current.setValue("");
         }
-
         setUploadProgress(100);
-        setTimeout(() => {
-          setIsProcessing(true);
-          formatJSON(activeMode === "minify", text);
-        }, 300);
+        formatJSON(activeMode === "minify", text);
       }
 
       setShowUrlDialog(false);
@@ -1093,20 +967,8 @@ const Index = () => {
       });
     } catch (err: unknown) {
       console.error("URL load error:", err);
-      let errorMessage = "Failed to load JSON from URL";
-
-      // Handle CORS errors specifically
-      if (err instanceof Error) {
-        errorMessage = err.message || "Failed to load JSON from URL";
-        if (
-          err.message?.includes("CORS") ||
-          err.message?.includes("Failed to fetch") ||
-          err.name === "TypeError"
-        ) {
-          errorMessage =
-            "CORS error: The server doesn't allow cross-origin requests. Try using a CORS proxy or ensure the API supports CORS.";
-        }
-      }
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to load JSON from URL";
 
       setError({ message: errorMessage });
       toast({
@@ -1239,14 +1101,6 @@ const Index = () => {
     loadOutputsCount();
   }, [refreshSidebar, isSidebarOpen]);
 
-  // Debug: Log when modal state changes
-  useEffect(() => {
-    if (showLargePasteWarning) {
-      console.log(" Large Paste Warning Modal should now be visible!");
-      console.log("attemptedPasteSize:", attemptedPasteSize);
-    }
-  }, [showLargePasteWarning, attemptedPasteSize]);
-
   const handleMouseDown = useCallback(() => {
     setIsDragging(true);
   }, []);
@@ -1301,6 +1155,15 @@ const Index = () => {
     window.addEventListener("resize", checkMobile);
 
     return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  // Sync fullscreen state with browser (handles Escape key exit)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
   const faqJsonLd = {
@@ -1363,15 +1226,6 @@ const Index = () => {
         onSearch={handleSearch}
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         savedOutputsCount={savedOutputsCount}
-      />
-
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".json"
-        onChange={handleFileUpload}
-        className="hidden"
       />
 
       {/* Upload/Processing Progress */}
@@ -1484,7 +1338,7 @@ const Index = () => {
                 )}
               </div>
               <span className="text-xs text-muted-foreground">
-                {formatFileSize(input.length)}
+                {formatFileSize(new Blob([input]).size)}
               </span>
               {/* Hidden file input for upload button */}
               <input
@@ -1634,18 +1488,8 @@ const Index = () => {
                     "⚠️  Prevented large content from loading:",
                     sizeMB.toFixed(2) + "MB"
                   );
-                  console.log("🚨 Setting modal state to show warning...");
-
-                  // Show warning modal FIRST
                   setAttemptedPasteSize(sizeMB);
                   setShowLargePasteWarning(true);
-
-                  console.log(
-                    "Modal state set. attemptedPasteSize:",
-                    sizeMB,
-                    "showLargePasteWarning:",
-                    true
-                  );
 
                   // Clear the editor after a tiny delay to ensure modal shows
                   setTimeout(() => {
@@ -1761,7 +1605,7 @@ const Index = () => {
                 </span>
               )}
               <span className="text-xs text-muted-foreground">
-                {formatFileSize(output.length)}
+                {formatFileSize(new Blob([output]).size)}
               </span>
             </div>
             <div className="flex items-center gap-2">

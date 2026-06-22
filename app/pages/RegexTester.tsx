@@ -139,7 +139,6 @@ const RegexTesterComponent = () => {
               <input
                 type="text"
                 value={flags}
-                onChange={(e) => e.target.value}
                 readOnly
                 className="w-16 bg-background border border-border rounded px-2 py-2 font-mono text-sm text-center"
               />

@@ -8,7 +8,7 @@ const getIrys = async () => {
   const token = process.env.IRYS_TOKEN || "matic";
   const key = process.env.IRYS_PRIVATE_KEY;
   const providerUrl =
-    process.env.IRYS_PROVIDER_URL || "https://rpc-mumbai.maticvigil.com";
+    process.env.IRYS_PROVIDER_URL || "https://rpc-amoy.polygon.technology";
 
   if (!key) {
     throw new Error(

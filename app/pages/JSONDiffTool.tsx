@@ -106,7 +106,7 @@ const compareJSON = (obj1: unknown, obj2: unknown, path = ""): DiffResult => {
       result.removed.push(...nested.removed);
       result.modified.push(...nested.modified);
     } else if (Array.isArray(val1) && Array.isArray(val2)) {
-      // Compare arrays
+      // Compare arrays element-by-element, recursing into object elements
       const maxLen = Math.max(val1.length, val2.length);
       for (let i = 0; i < maxLen; i++) {
         const itemPath = `${currentPath}[${i}]`;
@@ -114,6 +114,15 @@ const compareJSON = (obj1: unknown, obj2: unknown, path = ""): DiffResult => {
           result.added.push({ path: itemPath, value: val2[i] });
         } else if (i >= val2.length) {
           result.removed.push({ path: itemPath, value: val1[i] });
+        } else if (
+          typeof val1[i] === "object" && val1[i] !== null && !Array.isArray(val1[i]) &&
+          typeof val2[i] === "object" && val2[i] !== null && !Array.isArray(val2[i])
+        ) {
+          // Both are objects — recurse for granular key-level diff
+          const nested = compareJSON(val1[i], val2[i], itemPath);
+          result.added.push(...nested.added);
+          result.removed.push(...nested.removed);
+          result.modified.push(...nested.modified);
         } else if (JSON.stringify(val1[i]) !== JSON.stringify(val2[i])) {
           result.modified.push({
             path: itemPath,
@@ -144,6 +153,7 @@ const JSONDiffTool = () => {
   const { toast } = useToast();
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<"json1" | "json2">("json1");
   const [refreshSidebar, setRefreshSidebar] = useState(0);
   const [savedOutputsCount, setSavedOutputsCount] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -918,16 +928,38 @@ const JSONDiffTool = () => {
 
       <Footer isFullscreen={isFullscreen} />
 
+      {/* Restore-target picker shown above the sidebar when open */}
+      {isSidebarOpen && (
+        <div className="fixed right-80 top-4 z-50 bg-card border border-border rounded-lg p-2 shadow-lg flex flex-col gap-1">
+          <p className="text-xs text-muted-foreground px-1 mb-1">Restore into</p>
+          <button
+            onClick={() => setRestoreTarget("json1")}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${restoreTarget === "json1" ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
+          >
+            JSON 1
+          </button>
+          <button
+            onClick={() => setRestoreTarget("json2")}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${restoreTarget === "json2" ? "bg-primary text-primary-foreground" : "hover:bg-secondary"}`}
+          >
+            JSON 2
+          </button>
+        </div>
+      )}
+
       <RecentOutputs
         onRestore={(content) => {
-          // Try to parse and set as json1 if it's JSON, otherwise show in toast
           try {
             JSON.parse(content);
-            setJson1(content);
+            if (restoreTarget === "json2") {
+              setJson2(content);
+            } else {
+              setJson1(content);
+            }
             setIsSidebarOpen(false);
             toast({
               title: "Restored",
-              description: "JSON restored to JSON 1 editor.",
+              description: `JSON restored to ${restoreTarget === "json2" ? "JSON 2" : "JSON 1"} editor.`,
             });
           } catch {
             toast({
