@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
-import jwt from "jsonwebtoken";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { decodeJwt, decodeProtectedHeader, jwtVerify, SignJWT } from "jose";
 
 export type Algorithm = "HS256" | "HS384" | "HS512" | "RS256" | "RS384" | "RS512" | "ES256" | "ES384" | "ES512";
 
@@ -34,15 +34,12 @@ const STANDARD_CLAIMS: Record<string, string> = {
   jti: "JWT ID - unique identifier for the JWT",
 };
 
-function analyzeSecurityWarnings(decoded: { header: { alg?: string }; payload: string | { exp?: number; nbf?: number; [key: string]: unknown } }): SecurityWarning[] {
+function analyzeSecurityWarnings(decoded: {
+  header: Record<string, unknown>;
+  payload: Record<string, unknown>;
+}): SecurityWarning[] {
   const warnings: SecurityWarning[] = [];
 
-  // If payload is a string, we can't analyze it
-  if (typeof decoded.payload === "string") {
-    return warnings;
-  }
-
-  // Check algorithm
   if (decoded.header.alg === "none") {
     warnings.push({
       type: "critical",
@@ -51,7 +48,6 @@ function analyzeSecurityWarnings(decoded: { header: { alg?: string }; payload: s
     });
   }
 
-  // Check expiration
   if (!decoded.payload.exp) {
     warnings.push({
       type: "warning",
@@ -60,41 +56,37 @@ function analyzeSecurityWarnings(decoded: { header: { alg?: string }; payload: s
     });
   } else {
     const now = Math.floor(Date.now() / 1000);
-    if (decoded.payload.exp < now) {
+    if ((decoded.payload.exp as number) < now) {
       warnings.push({
         type: "warning",
-        message: `Token expired ${new Date(decoded.payload.exp * 1000).toLocaleString()}`,
+        message: `Token expired ${new Date((decoded.payload.exp as number) * 1000).toLocaleString()}`,
         field: "exp",
       });
     }
   }
 
-  // Check nbf
   if (decoded.payload.nbf) {
     const now = Math.floor(Date.now() / 1000);
-    if (decoded.payload.nbf > now) {
+    if ((decoded.payload.nbf as number) > now) {
       warnings.push({
         type: "info",
-        message: `Token not valid before ${new Date(decoded.payload.nbf * 1000).toLocaleString()}`,
+        message: `Token not valid before ${new Date((decoded.payload.nbf as number) * 1000).toLocaleString()}`,
         field: "nbf",
       });
     }
   }
 
-  // Check for sensitive data patterns
   const payloadString = JSON.stringify(decoded.payload).toLowerCase();
   const sensitivePatterns = ["password", "ssn", "credit", "card", "secret", "private"];
-
-  sensitivePatterns.forEach((pattern) => {
-    if (payloadString.includes(pattern)) {
+  sensitivePatterns.forEach((pat) => {
+    if (payloadString.includes(pat)) {
       warnings.push({
         type: "warning",
-        message: `Possible sensitive data detected: "${pattern}". JWTs are not encrypted - avoid storing sensitive data.`,
+        message: `Possible sensitive data detected: "${pat}". JWTs are not encrypted - avoid storing sensitive data.`,
       });
     }
   });
 
-  // Check token size
   const tokenSize = JSON.stringify(decoded).length;
   if (tokenSize > 8192) {
     warnings.push({
@@ -108,23 +100,20 @@ function analyzeSecurityWarnings(decoded: { header: { alg?: string }; payload: s
 
 function decodeJWT(token: string): DecodedJWT | null {
   try {
-    const parts = token.split(".");
+    const parts = token.trim().split(".");
     if (parts.length !== 3) {
       throw new Error("Invalid JWT format - must have 3 parts");
     }
 
-    const decoded = jwt.decode(token, { complete: true });
-    if (!decoded) {
-      throw new Error("Failed to decode JWT");
-    }
-
-    const warnings = analyzeSecurityWarnings(decoded);
+    const header = decodeProtectedHeader(token) as Record<string, unknown>;
+    const payload = decodeJwt(token) as Record<string, unknown>;
+    const warnings = analyzeSecurityWarnings({ header, payload });
 
     return {
-      header: decoded.header as unknown as Record<string, unknown>,
-      payload: typeof decoded.payload === "string" ? {} : (decoded.payload as unknown as Record<string, unknown>),
+      header,
+      payload,
       signature: parts[2],
-      isValid: false, // Will be updated during verification
+      isValid: false,
       raw: {
         header: parts[0],
         payload: parts[1],
@@ -138,26 +127,45 @@ function decodeJWT(token: string): DecodedJWT | null {
   }
 }
 
-function verifyJWT(token: string, secret: string, algorithm: Algorithm): { valid: boolean; error?: string } {
+async function verifyJWT(
+  token: string,
+  secret: string,
+  algorithm: Algorithm
+): Promise<{ valid: boolean; error?: string }> {
+  if (!algorithm.startsWith("HS")) {
+    return {
+      valid: false,
+      error:
+        "RS/ES algorithm verification requires a PEM public key. Only HS256/384/512 are supported for browser-based verification.",
+    };
+  }
   try {
-    jwt.verify(token, secret, { algorithms: [algorithm] });
+    const key = new TextEncoder().encode(secret);
+    await jwtVerify(token, key, { algorithms: [algorithm] });
     return { valid: true };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return { valid: false, error: errorMessage };
+    return {
+      valid: false,
+      error: error instanceof Error ? error.message : "Verification failed",
+    };
   }
 }
 
-function generateJWT(header: Record<string, unknown>, payload: Record<string, unknown>, secret: string, algorithm: Algorithm): string {
-  try {
-    return jwt.sign(payload, secret, {
-      algorithm,
-      header: header as { alg: string; [key: string]: unknown },
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    throw new Error(`Failed to generate JWT: ${errorMessage}`);
+async function generateJWT(
+  header: Record<string, unknown>,
+  payload: Record<string, unknown>,
+  secret: string,
+  algorithm: Algorithm
+): Promise<string> {
+  if (!algorithm.startsWith("HS")) {
+    throw new Error(
+      "RS/ES algorithm generation requires PEM key pairs. Only HS256/384/512 are supported."
+    );
   }
+  const key = new TextEncoder().encode(secret);
+  return await new SignJWT(payload)
+    .setProtectedHeader({ ...header, alg: algorithm })
+    .sign(key);
 }
 
 export function useJWTDecoder() {
@@ -165,23 +173,26 @@ export function useJWTDecoder() {
   const [secret, setSecret] = useState("");
   const [algorithm, setAlgorithm] = useState<Algorithm>("HS256");
   const [generatedToken, setGeneratedToken] = useState("");
+  const [verified, setVerified] = useState<{ valid: boolean; error?: string } | null>(null);
 
   const decoded = useMemo(() => {
     if (!token) return null;
     return decodeJWT(token);
   }, [token]);
 
-  const verified = useMemo(() => {
-    if (!token || !secret) return null;
-    return verifyJWT(token, secret, algorithm);
+  // Verify asynchronously whenever token, secret, or algorithm changes
+  useEffect(() => {
+    if (!token || !secret) {
+      setVerified(null);
+      return;
+    }
+    verifyJWT(token, secret, algorithm).then(setVerified);
   }, [token, secret, algorithm]);
 
   const generate = useCallback(
-    (header: Record<string, unknown>, payload: Record<string, unknown>) => {
-      if (!secret) {
-        throw new Error("Secret is required");
-      }
-      const newToken = generateJWT(header, payload, secret, algorithm);
+    async (header: Record<string, unknown>, payload: Record<string, unknown>) => {
+      if (!secret) throw new Error("Secret is required");
+      const newToken = await generateJWT(header, payload, secret, algorithm);
       setGeneratedToken(newToken);
       return newToken;
     },
@@ -192,6 +203,7 @@ export function useJWTDecoder() {
     setToken("");
     setSecret("");
     setGeneratedToken("");
+    setVerified(null);
   }, []);
 
   return {

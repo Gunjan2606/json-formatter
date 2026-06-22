@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 
 export interface RegexMatch {
   index: number;
@@ -174,6 +174,18 @@ export function useRegexTester() {
     );
   }, [regex, flags]);
 
+  // Auto-re-run test cases whenever pattern or flags change
+  useEffect(() => {
+    if (!regex || testCases.length === 0) return;
+    setTestCases((prev) =>
+      prev.map((testCase) => {
+        const testRegex = new RegExp(regex.source, flags);
+        const hasMatch = testRegex.test(testCase.testString);
+        return { ...testCase, passed: hasMatch === testCase.shouldMatch };
+      })
+    );
+  }, [regex, flags, testCases.length]); // testCases.length keeps the dep stable
+
   // Clear all
   const clear = useCallback(() => {
     setPattern("");
@@ -184,20 +196,24 @@ export function useRegexTester() {
   // Export code
   const exportCode = useCallback(
     (language: "javascript" | "python" | "go" | "java") => {
-      const escapedPattern = pattern.replace(/\\/g, "\\\\");
+      // Java double-quoted strings need backslashes doubled; raw string literals (Go, Python r"") do not
+      const javaEscaped = pattern.replace(/\\/g, "\\\\");
 
       switch (language) {
         case "javascript":
           return `const regex = /${pattern}/${flags};\nconst matches = "${testString}".match(regex);`;
 
         case "python":
-          return `import re\nregex = re.compile(r"${escapedPattern}", ${getPythonFlags(flags)})\nmatches = regex.findall("${testString}")`;
+          // r"..." raw strings: no escaping needed
+          return `import re\nregex = re.compile(r"${pattern}", ${getPythonFlags(flags)})\nmatches = regex.findall("${testString}")`;
 
         case "go":
-          return `import "regexp"\nregex := regexp.MustCompile(\`${escapedPattern}\`)\nmatches := regex.FindAllString("${testString}", -1)`;
+          // backtick raw strings: no escaping needed
+          return `import "regexp"\nregex := regexp.MustCompile(\`${pattern}\`)\nmatches := regex.FindAllString("${testString}", -1)`;
 
         case "java":
-          return `import java.util.regex.*;\nPattern pattern = Pattern.compile("${escapedPattern}");\nMatcher matcher = pattern.matcher("${testString}");`;
+          // regular double-quoted strings: backslashes must be doubled
+          return `import java.util.regex.*;\nPattern pattern = Pattern.compile("${javaEscaped}");\nMatcher matcher = pattern.matcher("${testString}");`;
 
         default:
           return "";

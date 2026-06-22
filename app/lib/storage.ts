@@ -45,7 +45,7 @@ export async function saveOutput(
   const output: SavedOutput = {
     id,
     name: name || `Output ${new Date().toLocaleString()}`,
-    size: content.length,
+    size: new Blob([content]).size,
     content,
     date: Date.now(),
     format,
@@ -53,8 +53,8 @@ export async function saveOutput(
     mimeType,
   };
 
-  // Get all existing outputs
-  const outputs = await getAllOutputs();
+  // Get all existing outputs for this format (so each format has its own 10-item quota)
+  const outputs = await getAllOutputs(format);
   
   // Add new output
   outputs.push(output);

@@ -59,7 +59,7 @@ const JWTDecoderComponent = () => {
     }
   }, []);
 
-  const handleGenerate = useCallback(() => {
+  const handleGenerate = useCallback(async () => {
     try {
       const header = { alg: algorithm, typ: "JWT" };
       const payload: Record<string, unknown> = {};
@@ -68,7 +68,6 @@ const JWTDecoderComponent = () => {
       customClaims.forEach(({ key, value }) => {
         if (key.trim()) {
           try {
-            // Try to parse as JSON, otherwise use as string
             payload[key] = JSON.parse(value);
           } catch {
             payload[key] = value;
@@ -76,13 +75,13 @@ const JWTDecoderComponent = () => {
         }
       });
 
-      generate(header, payload);
+      const newToken = await generate(header, payload);
       setActiveTab("decode");
-      setToken(generatedToken);
+      setToken(newToken);
     } catch (error) {
       console.error("Generate error:", error);
     }
-  }, [algorithm, customClaims, generate, generatedToken, setToken]);
+  }, [algorithm, customClaims, generate, setToken]);
 
   const addCustomClaim = () => {
     setCustomClaims([...customClaims, { key: "", value: "" }]);

@@ -62,11 +62,6 @@ export function useFakeTweet() {
   }, [tweetData.profileImage]);
 
   const updateTweet = useCallback((updates: Partial<TweetData>) => {
-    // Validate tweet text length (Twitter limit is 280 characters)
-    if (updates.tweetText !== undefined && updates.tweetText.length > 280) {
-      updates.tweetText = updates.tweetText.slice(0, 280);
-    }
-
     // Ensure numbers are non-negative
     if (updates.likes !== undefined && updates.likes < 0) updates.likes = 0;
     if (updates.retweets !== undefined && updates.retweets < 0) updates.retweets = 0;
